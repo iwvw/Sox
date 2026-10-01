@@ -71,9 +71,12 @@ $template = Get-Content -LiteralPath $templatePath -Raw
 $body = $template.Replace('{{CHANGES}}', $changes).Replace('{{VERSION}}', $Version)
 
 $sizeMap = [ordered]@{
-    '{{SIZE_X64_SETUP}}'      = Format-Size "Sox-$Version-x64-setup.exe"
-    '{{SIZE_X64_PORTABLE}}'   = Format-Size "Sox-$Version-x64-portable.zip"
-    '{{SIZE_ARM64_PORTABLE}}' = Format-Size "Sox-$Version-arm64-portable.zip"
+    '{{SIZE_X64_MERGED_SETUP}}'    = Format-Size "Sox-$Version-x64-merged-setup.exe"
+    '{{SIZE_X64_MERGED_PORTABLE}}' = Format-Size "Sox-$Version-x64-merged-portable.zip"
+    '{{SIZE_X64_SPLIT_SETUP}}'     = Format-Size "Sox-$Version-x64-split-setup.exe"
+    '{{SIZE_X64_SPLIT_PORTABLE}}'  = Format-Size "Sox-$Version-x64-split-portable.zip"
+    '{{SIZE_ARM64_MERGED_PORTABLE}}' = Format-Size "Sox-$Version-arm64-merged-portable.zip"
+    '{{SIZE_ARM64_SPLIT_PORTABLE}}'  = Format-Size "Sox-$Version-arm64-split-portable.zip"
 }
 foreach ($kv in $sizeMap.GetEnumerator()) {
     $body = $body.Replace($kv.Key, $kv.Value)

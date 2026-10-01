@@ -69,6 +69,28 @@ pwsh -File .github/scripts/gen-release-notes.ps1 `
   -OutputPath release-notes.md -PreviousTag v0.1.0
 ```
 
+## 发行变体
+
+每个架构产出两个运行时变体（`merged` / `split`），命名格式：
+
+```
+Sox-<version>-<arch>-<variant>-portable.zip
+Sox-<version>-x64-<variant>-setup.exe
+```
+
+| 变体 | 运行时 | x64 体积量级 | 要求 |
+|---|---|---|---|
+| `merged`（合并版） | 随包携带 | 约 400MB | 无，开箱即用 |
+| `split`（分离版） | 框架依赖 | 约 46MB | 已装 .NET 10 Desktop Runtime + Windows App SDK Runtime（安装包自动引导） |
+
+本地按变体构建：
+
+```powershell
+pwsh -File build/build-release.ps1 -Variant merged -Arch x64
+pwsh -File build/build-release.ps1 -Variant split  -Arch x64
+pwsh -File build/build-release.ps1 -Variant all    -Arch x64   # 两种都出
+```
+
 ## 工作流
 
 | 文件 | 触发 | 作用 |

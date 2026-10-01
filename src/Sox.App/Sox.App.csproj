@@ -7,11 +7,20 @@
     <RootNamespace>Sox.App</RootNamespace>
     <AssemblyName>Sox.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Embed the multi-size icon in the exe so Explorer, the taskbar and shortcuts (which take
+         icon index 0 from the target) show Sox instead of a generic application icon. -->
+    <ApplicationIcon>Assets\sox-tray.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Two release variants share this project. Default (true) is the merged build: .NET and the
+         Windows App SDK are carried inside the payload, so nothing has to be installed first. Pass
+         -p:SoxSelfContained=false for the split build, which is far smaller but requires the .NET
+         Desktop Runtime and the Windows App SDK Runtime (the installer bootstraps both). -->
+    <SoxSelfContained Condition="'$(SoxSelfContained)' == ''">true</SoxSelfContained>
+    <SelfContained>$(SoxSelfContained)</SelfContained>
+    <WindowsAppSDKSelfContained>$(SoxSelfContained)</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>preview</LangVersion>
@@ -30,6 +39,13 @@
   <ItemGroup>
     <PackageReference Include="H.NotifyIcon.WinUI" Version="2.5.0-beta.3" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+    <!-- The WindowsAppSDK metapackage drags in the AI, ML (onnxruntime + DirectML, ~45MB) and Widgets
+         stacks. Sox uses none of them, so pull them in directly with all assets excluded: a direct
+         reference's ExcludeAssets wins over the transitive one, keeping the DLLs out of the output. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" Version="2.2.3" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" Version="2.1.70" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" Version="2.0.5" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.1.70" ExcludeAssets="all" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
     <PackageReference Include="WinUIEx" Version="2.8.0" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.250402" />
@@ -68,15 +84,39 @@
     <Copy SourceFiles="@(ServiceFiles)" DestinationFiles="@(ServiceFiles->'$(OutDir)Service\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Publish the Service self-contained into the App's publish output, under Service\, the layout
+  <!-- A publish to a custom output directory (-o / -p:PublishDir) drops the WinUI compiled resources:
+       Sox.App.pri, the .xbf page fragments and Assets\. They are produced by the build into $(OutDir)
+       but are not publish items, so the app crashes on launch (Microsoft.UI.Xaml.dll, 0xc000027b)
+       with only "Log initialized" in app.log. Copy them across from the build output. -->
+  <Target Name="CopyWinUIResourcesToPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(OutDir)Sox.App.pri" DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" Condition="Exists('$(OutDir)Sox.App.pri')" />
+
+    <!-- .xbf fragments keep their page subdirectory (Controls\, Settings\, Styles\). -->
+    <ItemGroup>
+      <_XbfFragments Include="$(OutDir)**\*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_XbfFragments)"
+          DestinationFiles="@(_XbfFragments->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <!-- Assets\ is copied under its own name, so RecursiveDir is taken relative to Assets\. -->
+    <ItemGroup>
+      <_AssetFiles Include="$(OutDir)Assets\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AssetFiles)"
+          DestinationFiles="@(_AssetFiles->'$(PublishDir)Assets\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Publish the Service into the App's publish output, under Service\, the layout
        ServiceBootstrapper.ResolveServiceExe and ServicePluginLoader both expect (the latter scans
-       Service\Plugins for aliases). Framework-dependent would leave a portable copy broken on any
-       machine without the .NET desktop runtime, which defeats the portable build. The nested build
-       pins SelfContained=true and Platform explicitly so the outer publish's global properties do
-       not leak in. -->
+       Service\Plugins for aliases). It follows the same SelfContained mode as the App: the merged
+       build carries the .NET runtime, the split build relies on the machine's. The nested build pins
+       SelfContained and Platform explicitly so the outer publish's global properties do not leak in. -->
   <Target Name="PublishServiceToPublishDir" AfterTargets="Publish">
     <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Restore;Publish"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;Platform=$(Platform);PublishDir=$(PublishDir)Service\">
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SoxSelfContained);Platform=$(Platform);PublishDir=$(PublishDir)Service\">
       <Output TaskParameter="TargetOutputs" ItemName="ServicePublishOutputs" />
     </MSBuild>
   </Target>

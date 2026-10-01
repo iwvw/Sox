@@ -46,11 +46,27 @@
 - 安装包：`Sox-0.1.0-x64-setup.exe`，约 126MB
 - 单架构 publish 目录约 440MB
 
+### 4. 安装版启动修复 + 体积裁剪 + 双变体
+
+- **安装版打不开**：`dotnet publish -o <目录>` 不复制 WinUI 编译资源（`Sox.App.pri`、`*.xbf`、`Assets\`），启动即崩（`Microsoft.UI.Xaml.dll` / `0xc000027b`）。新增 `CopyWinUIResourcesToPublish` target 从 `$(OutDir)` 补拷。
+- **桌面图标**：exe 未设 `ApplicationIcon`，快捷方式取 exe 内嵌图标显示成通用图标。加 `<ApplicationIcon>Assets\sox-tray.ico`。
+- **裁剪 AI/ML**：`Microsoft.WindowsAppSDK` 元包强拉 AI/ML/Widgets（onnxruntime + DirectML 约 45MB），Sox 不用。用直接引用 + `ExcludeAssets="all"` 排除，441.8 → 393.8MB。
+- **双运行时变体**：`SoxSelfContained` 属性同时控制 App 与 Service。
+  - merged（默认）：自包含，x64 安装包 112.4MB / 便携 163.7MB。
+  - split：框架依赖，x64 安装包 9.8MB / 便携 14.0MB；安装包用 `DownloadTemporaryFile` 引导安装 .NET 10 Desktop Runtime 与 Windows App SDK 2.x Runtime。
+- `build-release.ps1` 加 `-Variant merged|split|all`；`installer.iss` 加 `/DVariant` 与 `/DBootstrapRuntime`。
+- 已客观验证：两变体 publish 均可启动（title=Sox）。
+
 ## 关键坑
 
 - PowerShell 读 `[xml]` 里带 `Condition` 属性的元素会拿到 `XmlElement`（`ToString` 是类型名），要读 `.InnerText`。
 - Inno Setup 用 winget 装在 `%LOCALAPPDATA%\Programs\Inno Setup 6`，不是 Program Files；脚本候选路径已含。
 - `publish` 会触发 App csproj 的内层 Service 构建，全局属性泄漏是 NETSDK1191 的根因。
+- **`dotnet publish -o` 丢 WinUI 资源**：`Sox.App.pri`/`*.xbf`/`Assets\` 只进 build 输出不进 publish，必须显式补拷（见 `CopyWinUIResourcesToPublish`）。
+- **WindowsAppSDK 元包强拉 AI/ML**：用直接引用 + `ExcludeAssets="all"` 排除，否则多带约 45MB。
+- **Inno `DownloadTemporaryFile` 出错抛异常**（不是返回 False），返回值为 Int64；已装更高版本时运行时安装器退出码 1638 视为成功。
+- **Windows App SDK 2.x 运行时检测**：注册在 `HKLM\SOFTWARE\Classes\Local Settings\...\PackageRepository\Packages\Microsoft.WindowsAppRuntime.2_*`，不是 `HKLM\SOFTWARE\Microsoft\WindowsAppSDK`。
+- csproj 的 XML 注释不能含 `--`（踩了两次）。
 
 ### 3. 版本号系统与发行说明
 

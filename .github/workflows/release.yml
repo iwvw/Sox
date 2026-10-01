@@ -90,8 +90,10 @@ jobs:
       - name: Build release artifacts
         shell: pwsh
         run: |
-          # 脚本自身对非 x64 跳过安装包（Inno 的 ArchitecturesAllowed=x64compatible）。
+          # 每个架构产出 merged 与 split 两个变体；脚本自身对非 x64 跳过安装包
+          # （Inno 的 ArchitecturesAllowed=x64compatible）。
           pwsh -File build/build-release.ps1 `
+            -Variant all `
             -Arch "${{ matrix.arch }}" `
             -Version "${{ steps.ver.outputs.version }}" `
             -Configuration $env:CONFIGURATION
