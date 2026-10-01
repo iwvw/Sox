@@ -132,7 +132,11 @@ jobs:
         run: |
           $v = $env:GITHUB_REF -replace '^refs/tags/v', ''
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # 首个 tag 没有上一个 tag，git describe 会返回非零；GitHub Actions 的 pwsh 包装器据此把
+          # 整个步骤判为失败，所以要显式清掉 LASTEXITCODE。
           $prev = git describe --tags --abbrev=0 "v$v^" 2>$null
+          if ($LASTEXITCODE -ne 0) { $prev = '' }
+          $global:LASTEXITCODE = 0
           "previous=$prev" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "version=$v previous=$prev"
 
