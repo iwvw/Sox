@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Sox.App.Controls.CardControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    IsTabStop="False"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ThemeShadow x:Key="CardShadow" />
+    </UserControl.Resources>
+
+    <Grid x:Name="ShadowHost" Padding="{x:Bind ShadowPadding, Mode=OneWay}">
+        <Border
+            x:Name="CardBorder"
+            VerticalAlignment="Top"
+            Background="Transparent"
+            BorderBrush="{ThemeResource Sox.CardStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="{x:Bind CardCornerRadius, Mode=OneWay}"
+            Shadow="{StaticResource CardShadow}"
+            Translation="0,0,32">
+            <Grid x:Name="CardContent">
+                <controls:SystemBackdropElement x:Name="BackdropElement" CornerRadius="{x:Bind CardCornerRadius, Mode=OneWay}" />
+                <!--  Rounded tint layer. A Border draws its own rounded background with clean
+                      anti-aliased corners, so the card reads as rounded without clipping the content:
+                      a Composition Clip on this Grid would promote the whole subtree to an intermediate
+                      surface (blurring the row icons and cutting their shadows).  -->
+                <Border
+                    x:Name="TintLayer"
+                    Background="{ThemeResource LayerOnAcrylicPrimaryBackgroundBrush}"
+                    CornerRadius="{x:Bind CardCornerRadius, Mode=OneWay}"
+                    IsHitTestVisible="False" />
+                <ContentPresenter
+                    x:Name="MainContentPresenter"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Content="{x:Bind MainContent, Mode=OneWay}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

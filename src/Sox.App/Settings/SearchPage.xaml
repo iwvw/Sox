@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Sox.App.Settings.SearchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="24,20,24,24">
+        <StackPanel MaxWidth="1000" Spacing="4">
+
+            <controls:SettingsCard Description="关闭后为子串精确匹配" Header="模糊匹配">
+                <ToggleSwitch x:Name="FuzzyToggle" Toggled="OnFuzzyToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Description="使用 | 时优先于空格" Header="| 优先">
+                <ToggleSwitch x:Name="OrFirstToggle" Toggled="OnOrFirstToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Description="记录打开过的文件以优化排序" Header="搜索历史">
+                <ToggleSwitch x:Name="HistoryToggle" Toggled="OnHistoryToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Description="记录输入过的关键词" Header="关键词历史">
+                <ToggleSwitch x:Name="KeywordHistoryToggle" Toggled="OnKeywordHistoryToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Header="最大结果数">
+                <ComboBox x:Name="MaxResultsCombo" MinWidth="120" SelectionChanged="OnMaxResultsChanged">
+                    <ComboBoxItem Content="100" />
+                    <ComboBoxItem Content="200" />
+                    <ComboBoxItem Content="500" />
+                    <ComboBoxItem Content="1000" />
+                </ComboBox>
+            </controls:SettingsCard>
+
+            <controls:SettingsExpander Header="忽略规则">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard Header="忽略的路径模式（每行一个 glob）">
+                        <TextBox
+                            x:Name="IgnoredGlobsBox"
+                            MinWidth="420"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Mono, Consolas, monospace"
+                            Height="100"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="忽略的路径正则（每行一个）">
+                        <TextBox
+                            x:Name="IgnoredRegexBox"
+                            MinWidth="420"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Mono, Consolas, monospace"
+                            Height="100"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander Header="排除目录" IsExpanded="False">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard Header="每行一个路径（支持环境变量）">
+                        <TextBox
+                            x:Name="ExcludedPathsBox"
+                            MinWidth="420"
+                            AcceptsReturn="True"
+                            FontFamily="Cascadia Mono, Consolas, monospace"
+                            Height="120"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

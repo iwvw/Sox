@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tb="using:H.NotifyIcon">
+
+    <!--  Tray icon + Fluent context menu. The SecondWindow mode renders this MenuFlyout in its own
+          WinUI window so the menu gets native Fluent styling (rounded corners, acrylic, theme)
+          instead of the WinForms renderer. Click handlers are wired in TrayIconService.  -->
+    <tb:TaskbarIcon
+        x:Key="SoxTrayIcon"
+        ContextMenuThemeMode="System"
+        IconSource="ms-appx:///Assets/sox-tray.ico"
+        NoLeftClickDelay="True"
+        ToolTipText="Sox"
+        Visibility="Collapsed">
+        <tb:TaskbarIcon.ContextFlyout>
+            <MenuFlyout AreOpenCloseAnimationsEnabled="False">
+                <MenuFlyoutItem FontSize="13" Text="打开搜索框">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon FontSize="14" Glyph="&#xE721;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem FontSize="13" Text="设置">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon FontSize="14" Glyph="&#xE713;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem FontSize="13" Text="关于 / 检查更新">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon FontSize="14" Glyph="&#xE946;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem FontSize="13" Text="退出">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon FontSize="14" Glyph="&#xE7E8;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
+        </tb:TaskbarIcon.ContextFlyout>
+    </tb:TaskbarIcon>
+</ResourceDictionary>

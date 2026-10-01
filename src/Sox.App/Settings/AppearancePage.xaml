@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Sox.App.Settings.AppearancePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="24,20,24,24">
+        <StackPanel MaxWidth="1000" Spacing="4">
+
+            <controls:SettingsCard Description="跟随 Windows 的浅色 / 深色设置" Header="跟随系统主题">
+                <ToggleSwitch x:Name="ThemeFollowSystemToggle" Toggled="OnThemeFollowSystemToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Description="关闭跟随后使用" Header="深色主题">
+                <ToggleSwitch x:Name="DarkThemeToggle" Toggled="OnDarkThemeToggled" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Description="切换后立即生效" Header="窗口材质">
+                <ComboBox
+                    x:Name="BackdropCombo"
+                    MinWidth="160"
+                    SelectedIndex="0"
+                    SelectionChanged="OnBackdropChanged">
+                    <ComboBoxItem Content="亚克力" />
+                    <ComboBoxItem Content="Mica" />
+                </ComboBox>
+            </controls:SettingsCard>
+
+            <controls:SettingsExpander Header="窗口尺寸">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard Description="窗口宽度（DIP）" Header="搜索框宽度">
+                        <TextBox x:Name="SearchBarWidthBox" MinWidth="120" TextChanged="OnTextChangedCommit" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Description="预览面板宽度（DIP），0 表示关闭预览" Header="预览宽度">
+                        <TextBox x:Name="PreviewWidthBox" MinWidth="120" TextChanged="OnTextChangedCommit" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

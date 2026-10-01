@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Application
+    x:Class="Sox.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Sox.App.Controls"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Styles/Theme.Normal.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/TextBox.xaml" />
+                <ResourceDictionary Source="ms-appx:///TrayMenu.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+            <Style x:Key="ResultItemContainerStyle" TargetType="ListViewItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListViewItem">
+                            <ListViewItemPresenter
+                                x:Name="Root"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                ContentMargin="{TemplateBinding Padding}"
+                                Control.IsTemplateFocusTarget="True"
+                                CornerRadius="4"
+                                FocusVisualMargin="-2"
+                                PointerOverBackground="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                PointerOverForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                                PressedBackground="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                SelectedBackground="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                SelectedForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                                SelectedPointerOverBackground="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                SelectedPressedBackground="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                SelectionIndicatorVisualEnabled="False" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <DataTemplate x:Key="ResultItemTemplate">
+                <Grid Height="48" Padding="10,0,10,0" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="52" />
+                    </Grid.ColumnDefinitions>
+
+                    <!--  Icon column: a loaded shell image and a fallback glyph overlap; whichever has
+                          content renders and the other is blank (null Source / empty Glyph draw nothing),
+                          so no visibility converter is needed.  -->
+                    <Grid Grid.Column="0" Width="28" Height="28">
+                        <Image
+                            Width="28"
+                            Height="28"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Source="{Binding Icon}" />
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="18"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="{Binding Glyph}" />
+                    </Grid>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Spacing="1">
+                        <controls:HighlightTextBlock
+                            FontSize="14"
+                            NormalForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Query="{Binding Query}"
+                            Text="{Binding Name}" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{Binding PathDisplay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <TextBlock
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ShortcutText}" />
+                </Grid>
+            </DataTemplate>
+
+            <DataTemplate x:Key="ActionItemTemplate">
+                <Grid Height="44" Padding="10,0,10,0" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="52" />
+                    </Grid.ColumnDefinitions>
+
+                    <FontIcon
+                        Grid.Column="0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="{Binding Glyph}" />
+
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="14"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Title}"
+                        TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ShortcutText}" />
+                </Grid>
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

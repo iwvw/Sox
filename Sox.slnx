@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sox.App/Sox.App.csproj" />
+  </Folder>
+  <Folder Name="/src/Sox.Core/">
+    <Project Path="src/Sox.Core/Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Sox.PluginSdk/">
+    <Project Path="src/Sox.PluginSdk/PluginSdk.csproj" />
+  </Folder>
+  <Folder Name="/src/Sox.Service/">
+    <Project Path="src/Sox.Service/Service.csproj" />
+  </Folder>
+</Solution>

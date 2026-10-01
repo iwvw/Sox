@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Sox.App",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Sox.App/bin/Debug/Sox.App.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Sox.App/bin/Debug",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    }
+  ]
+}

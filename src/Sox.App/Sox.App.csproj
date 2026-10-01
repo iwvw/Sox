@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <RootNamespace>Sox.App</RootNamespace>
+    <AssemblyName>Sox.App</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <!-- WinUI 3 XAML relies on reflection; trimming breaks compiled bindings (XamlParseException).
+         ReadyToRun inflates the payload by tens of MB for little startup benefit here. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.5.0-beta.3" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="WinUIEx" Version="2.8.0" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.250402" />
+    <PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.2.250402" />
+    <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.250402" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sox.Core\Core.csproj" />
+    <ProjectReference Include="..\Sox.PluginSdk\PluginSdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <Target Name="BuildAndCopyService" BeforeTargets="Build">
+    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=">
+      <Output TaskParameter="TargetOutputs" ItemName="ServiceBuildOutputs" />
+    </MSBuild>
+  </Target>
+
+  <Target Name="CopyServiceToOutput" AfterTargets="Build" DependsOnTargets="BuildAndCopyService">
+    <ItemGroup>
+      <ServiceFiles Include="..\Sox.Service\bin\$(Configuration)\net10.0-windows\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ServiceFiles)" DestinationFiles="@(ServiceFiles->'$(OutDir)Service\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!-- Keep only the languages the app actually ships; drop the other ~100 locale folders. -->
+  <Target Name="TrimPublishLanguages" AfterTargets="Publish">
+    <ItemGroup>
+      <PublishLanguageDirs Include="$(PublishDir)**" />
+    </ItemGroup>
+    <Exec Command="powershell -NoProfile -Command &quot;Get-ChildItem -LiteralPath '$(PublishDir)' -Directory | Where-Object { $_.Name -match '^[a-z]{2}(-[A-Za-z]{2,4})?$' -and $_.Name -notin @('en-us','zh-CN','zh-Hans','zh-Hant') } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue&quot;" />
+  </Target>
+
+</Project>
