@@ -52,7 +52,10 @@
        those down as global properties, and an empty RuntimeIdentifier with SelfContained=true is
        NETSDK1191. The published, self-contained Service is produced separately below. -->
   <Target Name="BuildAndCopyService" BeforeTargets="Build">
-    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Build"
+    <!-- Restore first: the App does not reference the Service, so a plain publish/build only
+         restores the App's own dependency graph and a clean checkout has no Service assets
+         (NETSDK1004). Incremental, so it is a no-op once Service has been restored. -->
+    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Restore;Build"
              Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false;Platform=AnyCPU">
       <Output TaskParameter="TargetOutputs" ItemName="ServiceBuildOutputs" />
     </MSBuild>

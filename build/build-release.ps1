@@ -59,6 +59,12 @@ switch ($Arch) {
     'arm64' { $rid = 'win-arm64'; $platform = 'ARM64' }
 }
 
+# 安装包面向 x64（Inno 的 ArchitecturesAllowed=x64compatible）；arm64 只出便携版。
+if ($Arch -ne 'x64' -and -not $SkipInstaller) {
+    Write-Host "== $Arch 只产出便携版，跳过安装包 =="
+    $SkipInstaller = $true
+}
+
 $publishDir = Join-Path $artifactsDir "publish-$Arch"
 if (Test-Path -LiteralPath $publishDir) { Remove-Item -LiteralPath $publishDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null

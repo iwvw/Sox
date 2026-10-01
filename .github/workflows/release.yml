@@ -90,13 +90,11 @@ jobs:
       - name: Build release artifacts
         shell: pwsh
         run: |
-          # arm64 只出便携版（Inno 安装包面向 x64）。
-          $extra = if ("${{ matrix.arch }}" -eq "x64") { @() } else { @("-SkipInstaller") }
+          # 脚本自身对非 x64 跳过安装包（Inno 的 ArchitecturesAllowed=x64compatible）。
           pwsh -File build/build-release.ps1 `
             -Arch "${{ matrix.arch }}" `
             -Version "${{ steps.ver.outputs.version }}" `
-            -Configuration $env:CONFIGURATION `
-            @extra
+            -Configuration $env:CONFIGURATION
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
