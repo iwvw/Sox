@@ -78,16 +78,19 @@
                         Grid.Column="1"
                         VerticalAlignment="Center"
                         Spacing="1">
+                        <!--  A row with no subtitle (a bare application) shows its name larger and
+                              semi-bold; a row with one keeps the compact 14/11 stack.  -->
                         <controls:HighlightTextBlock
-                            FontSize="14"
                             NormalForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Emphasized="{Binding IsNameOnly}"
                             Query="{Binding Query}"
                             Text="{Binding Name}" />
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding PathDisplay}"
-                            TextTrimming="CharacterEllipsis" />
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="{Binding HasSubtitle, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
 
                     <TextBlock

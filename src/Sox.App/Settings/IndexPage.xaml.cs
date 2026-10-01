@@ -1,5 +1,8 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Sox.App.Services;
 using Sox.Core;
 using Sox.Core.Indexer.Usn;
@@ -11,11 +14,18 @@ public sealed partial class IndexPage : Page
     private readonly SearchHost _searchHost;
     private CancellationTokenSource? _statusCts;
     private MachineSettings? _machineSettings;
+    private readonly UserSettings _settings = UserSettings.Load();
+    private readonly ObservableCollection<PriorityRow> _priorityRows = new();
 
     public IndexPage(SearchHost searchHost)
     {
         _searchHost = searchHost;
         InitializeComponent();
+
+        foreach (var rule in _settings.PathPriorities)
+            _priorityRows.Add(new PriorityRow(rule));
+        PriorityList.ItemsSource = _priorityRows;
+
         _ = LoadIndexStateAsync();
     }
 
@@ -120,5 +130,131 @@ public sealed partial class IndexPage : Page
     {
         _statusCts?.Cancel();
         _statusCts?.Dispose();
+    }
+
+    // ---- Priority rules ----
+
+    private async void OnAddPriority(object sender, RoutedEventArgs e)
+    {
+        var draft = new PathPriorityRuleSetting { Priority = PathPriority.Normal };
+        if (await EditPriorityAsync(draft, isNew: true))
+        {
+            _settings.PathPriorities.Add(draft);
+            _priorityRows.Add(new PriorityRow(draft));
+            SavePriorities();
+        }
+    }
+
+    private async void OnEditPriority(object sender, RoutedEventArgs e)
+    {
+        if (PriorityList.SelectedItem is not PriorityRow row)
+            return;
+
+        await EditPriorityAsync(row.Model, isNew: false);
+        row.Refresh();
+        SavePriorities();
+    }
+
+    private void OnDeletePriority(object sender, RoutedEventArgs e)
+    {
+        if (PriorityList.SelectedItem is not PriorityRow row)
+            return;
+
+        _settings.PathPriorities.Remove(row.Model);
+        _priorityRows.Remove(row);
+        SavePriorities();
+    }
+
+    private async Task<bool> EditPriorityAsync(PathPriorityRuleSetting rule, bool isNew)
+    {
+        var path = new TextBox { Header = "目录", Text = rule.Path };
+        var pick = new Button { Content = "浏览…", Margin = new Thickness(8, 0, 0, 0) };
+        pick.Click += async (_, _) =>
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.Current.MainWindow));
+            picker.FileTypeFilter.Add("*");
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is not null)
+                path.Text = folder.Path;
+        };
+        var pathRow = new StackPanel { Orientation = Orientation.Horizontal };
+        pathRow.Children.Add(path);
+        pathRow.Children.Add(pick);
+
+        var combo = new ComboBox { Header = "优先级", MinWidth = 200 };
+        combo.Items.Add("高（优先显示）");
+        combo.Items.Add("正常");
+        combo.Items.Add("不常用（靠后）");
+        combo.Items.Add("不索引（排除）");
+        combo.SelectedIndex = rule.Priority switch
+        {
+            PathPriority.High => 0,
+            PathPriority.Uncommon => 2,
+            PathPriority.Excluded => 3,
+            _ => 1,
+        };
+
+        var panel = new StackPanel { Spacing = 12, Width = 460 };
+        panel.Children.Add(pathRow);
+        panel.Children.Add(combo);
+
+        var dialog = new ContentDialog
+        {
+            Title = isNew ? "添加优先级规则" : "编辑优先级规则",
+            Content = panel,
+            PrimaryButtonText = "确定",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(path.Text))
+            return false;
+
+        rule.Path = path.Text.Trim();
+        rule.Priority = combo.SelectedIndex switch
+        {
+            0 => PathPriority.High,
+            2 => PathPriority.Uncommon,
+            3 => PathPriority.Excluded,
+            _ => PathPriority.Normal,
+        };
+        return true;
+    }
+
+    private void SavePriorities()
+    {
+        _settings.Save();
+        (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
+    }
+
+    /// <summary>Row view-model over a stored priority rule.</summary>
+    public sealed class PriorityRow : INotifyPropertyChanged
+    {
+        public PriorityRow(PathPriorityRuleSetting model) => Model = model;
+
+        public PathPriorityRuleSetting Model { get; }
+
+        public string Path => Model.Path;
+
+        public string PriorityLabel => Model.Priority switch
+        {
+            PathPriority.High => "高",
+            PathPriority.Uncommon => "不常用",
+            PathPriority.Excluded => "不索引",
+            _ => "正常",
+        };
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void Refresh()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Path)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PriorityLabel)));
+        }
     }
 }

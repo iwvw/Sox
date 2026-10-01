@@ -28,9 +28,32 @@ public class UserSettings
     public List<string> BlacklistedProcesses { get; set; } = new();
     public bool EnableHistory { get; set; } = true;
     public bool EnableKeywordHistory { get; set; } = true;
-    public bool StartWithWindows { get; set; } = true;
+
+    // Launch Sox when the user signs in, and (when MinimizeToTrayOnStart) start hidden in the tray
+    // instead of showing the spotlight. Both are applied by StartupService; StartWithWindows is the
+    // preference, the registry Run value is the effect.
+    public bool StartWithWindows { get; set; } = false;
+    public bool MinimizeToTrayOnStart { get; set; } = true;
+
+    // Global hotkey that summons the spotlight, in the flat recorder format (e.g. "Alt+Space", "Ctrl").
+    // Applied by the App's HotkeyService; a bare modifier means double-tap that modifier is unsupported
+    // here, so only combinations are accepted.
+    public string SummonHotkey { get; set; } = "Alt+Space";
+
+    // Web-search engines shown on the 网络搜索 settings page and consulted by the query provider.
+    public List<WebSearchEngineSetting> WebSearchEngines { get; set; } = WebSearchDefaults.Create();
+
+    // Per-folder ranking priority (high / normal / uncommon / excluded), applied on top of the
+    // behaviour score by SearchResultRankComparer and as a hard filter.
+    public List<PathPriorityRuleSetting> PathPriorities { get; set; } = new();
+
     public bool AutoCheckUpdates { get; set; } = true;
     public bool AutoSilentUpdate { get; set; } = false;
+
+    // Optional GitHub token for update checks. Only needed while the release repository is private:
+    // the anonymous Releases API returns 404 for a private repo. A fine-grained read-only token (or a
+    // classic token with just repo scope) is enough; leave empty for a public repository.
+    public string GitHubToken { get; set; } = string.Empty;
     // Bookkeeping rather than a preference: the release tag whose last startup install attempt failed, and
     // when. Without it a startup that cannot update (service not running, download failed) re-downloads a
     // full release zip on every single launch. Only UpdateCheckService reads or writes these; the About

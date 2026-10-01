@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Sox.App.Settings.WebSearchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+
+    <Grid Padding="24,20,24,24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock
+            Grid.Row="0"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Text="输入关键字加空格进入对应搜索引擎，例如 g 你好。双击行可编辑。"
+            TextWrapping="Wrap" />
+
+        <ListView
+            x:Name="EngineList"
+            Grid.Row="1"
+            MaxWidth="1000"
+            HorizontalAlignment="Left"
+            SelectionMode="Single"
+            DoubleTapped="OnEditEngine">
+            <ListView.Header>
+                <Grid Padding="12,6" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="40" />
+                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="120" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="启用" />
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="关键字" />
+                    <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="标题" />
+                    <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="图标" />
+                </Grid>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="12,6" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="120" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox
+                            Grid.Column="0"
+                            IsChecked="{Binding Enabled, Mode=TwoWay}"
+                            Checked="OnRowToggled"
+                            Unchecked="OnRowToggled" />
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Keyword}" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding Name}" />
+                        <TextBlock
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding IconLabel}" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <StackPanel
+            Grid.Row="2"
+            Orientation="Horizontal"
+            Spacing="8">
+            <Button Click="OnAddEngine" Content="添加" />
+            <Button Click="OnEditEngine" Content="编辑" />
+            <Button Click="OnDeleteEngine" Content="删除" />
+        </StackPanel>
+    </Grid>
+</Page>

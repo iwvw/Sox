@@ -29,6 +29,13 @@ public sealed partial class HighlightTextBlock : UserControl
             typeof(HighlightTextBlock),
             new PropertyMetadata(null, OnChanged));
 
+    public static readonly DependencyProperty EmphasizedProperty =
+        DependencyProperty.Register(
+            nameof(Emphasized),
+            typeof(bool),
+            typeof(HighlightTextBlock),
+            new PropertyMetadata(false, OnEmphasisChanged));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -45,6 +52,22 @@ public sealed partial class HighlightTextBlock : UserControl
     {
         get => (Brush?)GetValue(NormalForegroundProperty);
         set => SetValue(NormalForegroundProperty, value);
+    }
+
+    /// <summary>Renders the name larger and semi-bold; used for rows with no subtitle (bare apps).</summary>
+    public bool Emphasized
+    {
+        get => (bool)GetValue(EmphasizedProperty);
+        set => SetValue(EmphasizedProperty, value);
+    }
+
+    private static void OnEmphasisChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var control = (HighlightTextBlock)d;
+        control.Inner.FontSize = (bool)e.NewValue ? 16 : 14;
+        control.Inner.FontWeight = (bool)e.NewValue
+            ? Microsoft.UI.Text.FontWeights.SemiBold
+            : Microsoft.UI.Text.FontWeights.Normal;
     }
 
     public HighlightTextBlock()
@@ -84,9 +107,14 @@ public sealed partial class HighlightTextBlock : UserControl
             return;
         }
 
-        var highlight = Application.Current.Resources["SystemAccentColor"] is Windows.UI.Color accent
-            ? new SolidColorBrush(accent)
-            : NormalForeground;
+        // Prefer the theme-aware highlight brush (a saturated tint that stays legible on the acrylic
+        // card); fall back to the accent colour, then to the normal foreground.
+        Brush highlight = Application.Current.Resources.TryGetValue("Sox.HighlightBrush", out var brush)
+            && brush is Brush themed
+            ? themed
+            : Application.Current.Resources["SystemAccentColor"] is Windows.UI.Color accent
+                ? new SolidColorBrush(accent)
+                : NormalForeground!;
 
         var start = 0;
         var current = mask[0];

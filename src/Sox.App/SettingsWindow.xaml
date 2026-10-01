@@ -45,11 +45,21 @@
             PaneDisplayMode="Left">
             <NavigationView.MenuItems>
                 <NavigationViewItem
-                    Content="外观"
+                    Content="常规"
                     IsSelected="True"
-                    Tag="appearance">
+                    Tag="general">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="外观" Tag="appearance">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE771;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="热键" Tag="hotkeys">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE765;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="搜索" Tag="search">
@@ -60,6 +70,11 @@
                 <NavigationViewItem Content="索引" Tag="index">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE80A;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="网络搜索" Tag="websearch">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE774;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="关于" Tag="about">

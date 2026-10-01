@@ -20,6 +20,10 @@
             <SolidColorBrush x:Key="Sox.Syntax.Tag" Color="#569CD6" />
             <SolidColorBrush x:Key="Sox.Syntax.Attribute" Color="#9CDCFE" />
             <SolidColorBrush x:Key="Sox.Syntax.Punctuation" Color="#D4D4D4" />
+
+            <!--  Query-term highlight in result rows. The old SystemAccentColor was too close to the
+                  name text on dark acrylic to read; this is a saturated, high-contrast tint per theme.  -->
+            <SolidColorBrush x:Key="Sox.HighlightBrush" Color="#FFD166" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="LayerOnAcrylicPrimaryBackgroundBrush" Color="#A0FFFFFF" />
@@ -37,6 +41,8 @@
             <SolidColorBrush x:Key="Sox.Syntax.Tag" Color="#800000" />
             <SolidColorBrush x:Key="Sox.Syntax.Attribute" Color="#FF0000" />
             <SolidColorBrush x:Key="Sox.Syntax.Punctuation" Color="#1F1F1F" />
+
+            <SolidColorBrush x:Key="Sox.HighlightBrush" Color="#C2410C" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="LayerOnAcrylicPrimaryBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -54,6 +60,8 @@
             <SolidColorBrush x:Key="Sox.Syntax.Tag" Color="{ThemeResource SystemColorHotlightColor}" />
             <SolidColorBrush x:Key="Sox.Syntax.Attribute" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="Sox.Syntax.Punctuation" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="Sox.HighlightBrush" Color="{ThemeResource SystemColorHotlightColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

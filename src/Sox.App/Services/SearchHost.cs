@@ -87,7 +87,13 @@ namespace Sox.App.Services;
         var stripped = SearchQuerySortParser.StripExclusionBypass(query, out _);
         var behavior = SearchHistoryStore.Snapshot();
         var penalties = SearchHistoryStore.PenaltySnapshot();
-        var comparer = new SearchResultRankComparer(behavior, penalties);
+        // The user's folder-priority rules: High/Uncommon become a score bonus, Excluded becomes a hard
+        // filter applied in Snapshot. Both come from one settings read per search.
+        var priorities = UserSettings.Load().PathPriorities ?? new List<PathPriorityRuleSetting>();
+        var comparer = new SearchResultRankComparer(behavior, penalties)
+        {
+            PathPriorityBonus = PathPriorityResolver.BuildBonus(priorities),
+        };
 
         var bag = new ConcurrentDictionary<string, SearchResult>(StringComparer.OrdinalIgnoreCase);
         var dirty = 0;
@@ -116,7 +122,7 @@ namespace Sox.App.Services;
                     continue;
                 }
 
-                onUpdate(Snapshot(bag, comparer, max));
+                onUpdate(Snapshot(bag, comparer, priorities, max));
             }
         }, token);
 
@@ -153,7 +159,7 @@ namespace Sox.App.Services;
         }
 
         // Final authoritative flush so the UI ends on the fully sorted set.
-        onUpdate(Snapshot(bag, comparer, max));
+        onUpdate(Snapshot(bag, comparer, priorities, max));
 
         try
         {
@@ -247,9 +253,16 @@ namespace Sox.App.Services;
     private static List<SearchResult> Snapshot(
         ConcurrentDictionary<string, SearchResult> bag,
         SearchResultRankComparer comparer,
+        IReadOnlyList<PathPriorityRuleSetting> priorities,
         int maxResults)
     {
+        var hasExclusions = priorities.Any(p => p.Priority == PathPriority.Excluded);
         var list = new List<SearchResult>(bag.Values);
+        if (hasExclusions)
+        {
+            list.RemoveAll(r => PathPriorityResolver.IsExcluded(r.Path, priorities));
+        }
+
         list.Sort(comparer);
         if (list.Count > maxResults)
         {

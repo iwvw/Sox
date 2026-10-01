@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Text.Json;
+using Sox.Core;
 using Sox.PluginSdk.Services;
 
 namespace Sox.App.Services.QueryProviders;
@@ -10,22 +11,11 @@ namespace Sox.App.Services.QueryProviders;
 /// followed by a space enters that engine's scope, which isolates the result list to this provider and
 /// badges the search box (see <see cref="Scopes"/>). Search-engine suggestions are fetched in the
 /// background and surfaced as extra rows; the direct "search for ..." row is always present so the
-/// scope is useful before any suggestion arrives. Ported from Lertaro's WebSearchInstantProvider.
+/// scope is useful before any suggestion arrives. Engines come from UserSettings.WebSearchEngines, so
+/// the set is user-editable (the list was hardcoded before). Ported from Lertaro's WebSearchInstantProvider.
 /// </summary>
 internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
 {
-    private sealed record Source(string Keyword, string Name, string UrlTemplate, string? SuggestUrl);
-
-    private static readonly Source[] Sources =
-    [
-        new("bd", "百度", "https://www.baidu.com/s?wd=%s", "https://suggestion.baidu.com/su?wd=%s&cb=window.bdsug.sug"),
-        new("g", "Google", "https://www.google.com/search?q=%s", "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"),
-        new("bing", "Bing", "https://www.bing.com/search?q=%s", "https://api.bing.com/osjson.aspx?query=%s"),
-        new("gh", "GitHub", "https://github.com/search?q=%s", null),
-        new("wiki", "Wikipedia", "https://zh.wikipedia.org/wiki/Special:Search?search=%s", null),
-        new("yt", "YouTube", "https://www.youtube.com/results?search_query=%s", null),
-    ];
-
     private static readonly HttpClient Http = CreateClient();
 
     // engine-keyword + term -> suggestions. Bounded: a session types a lot of terms.
@@ -36,42 +26,48 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
     /// current scoped query and pick them up. See <see cref="MainWindow"/>'s subscription.</summary>
     public event Action? SuggestionsUpdated;
 
+    private static IReadOnlyList<WebSearchEngineSetting> Engines =>
+        UserSettings.Load().WebSearchEngines ?? new List<WebSearchEngineSetting>();
+
     public IReadOnlyList<QueryScope> Scopes =>
-        Sources.Select(s => new QueryScope(s.Keyword, s.Name, "\uE721")).ToList();
+        Engines.Where(e => e.Enabled && !string.IsNullOrWhiteSpace(e.Keyword))
+            .Select(e => new QueryScope(e.Keyword, e.Name, e.Glyph))
+            .ToList();
 
     public IEnumerable<InstantResult> Query(string query)
     {
-        foreach (var source in Sources)
+        foreach (var engine in Engines)
         {
-            if (!TriggerWord.TryMatchInvoked(query, source.Keyword, out var argument))
-            {
+            if (!engine.Enabled || string.IsNullOrWhiteSpace(engine.Keyword))
                 continue;
-            }
+
+            if (!TriggerWord.TryMatchInvoked(query, engine.Keyword, out var argument))
+                continue;
 
             argument = argument.Trim();
             if (argument.Length == 0)
-            {
                 yield break;
-            }
 
             yield return new InstantResult
             {
-                Id = "web:" + source.Keyword + ":" + argument,
-                Title = $"{source.Name}：{argument}",
+                Id = "web:" + engine.Keyword + ":" + argument,
+                Title = $"{engine.Name}：{argument}",
                 Description = "网页搜索",
-                Glyph = "\uE721",
-                LaunchTarget = BuildUrl(source.UrlTemplate, argument),
+                Glyph = engine.Glyph,
+                IconPath = string.IsNullOrWhiteSpace(engine.IconPath) ? null : engine.IconPath,
+                LaunchTarget = BuildUrl(engine.UrlTemplate, argument),
             };
 
-            foreach (var term in GetSuggestions(source, argument))
+            foreach (var term in GetSuggestions(engine, argument))
             {
                 yield return new InstantResult
                 {
-                    Id = "web:" + source.Keyword + ":sug:" + term,
+                    Id = "web:" + engine.Keyword + ":sug:" + term,
                     Title = term,
-                    Description = $"{source.Name} 搜索",
-                    Glyph = "\uE721",
-                    LaunchTarget = BuildUrl(source.UrlTemplate, term),
+                    Description = $"{engine.Name} 搜索",
+                    Glyph = engine.Glyph,
+                    IconPath = string.IsNullOrWhiteSpace(engine.IconPath) ? null : engine.IconPath,
+                    LaunchTarget = BuildUrl(engine.UrlTemplate, term),
                 };
             }
 
@@ -80,14 +76,14 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
     }
 
     // Returns cached suggestions for the term, kicking off a background fetch on first miss.
-    private IReadOnlyList<string> GetSuggestions(Source source, string term)
+    private IReadOnlyList<string> GetSuggestions(WebSearchEngineSetting engine, string term)
     {
-        if (source.SuggestUrl is null)
+        if (string.IsNullOrWhiteSpace(engine.SuggestUrl))
         {
             return Array.Empty<string>();
         }
 
-        var key = source.Keyword + "\u0000" + term;
+        var key = engine.Keyword + "\u0000" + term;
         if (_suggestions.TryGetValue(key, out var cached))
         {
             return cached;
@@ -100,9 +96,9 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
                 IReadOnlyList<string> result;
                 try
                 {
-                    var url = BuildUrl(source.SuggestUrl, term);
+                    var url = BuildUrl(engine.SuggestUrl, term);
                     var json = await Http.GetStringAsync(url).ConfigureAwait(false);
-                    result = ParseSuggestions(source.Keyword, json);
+                    result = ParseSuggestions(engine.Keyword, json);
                 }
                 catch
                 {

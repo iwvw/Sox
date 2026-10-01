@@ -32,6 +32,8 @@ public sealed partial class MainWindow : WindowEx
     private NativeMethods.WndProc? _wndProc;
     private IntPtr _originalWndProc;
     private bool _themeInitialized;
+    private readonly HotkeyService _hotkeys;
+    private readonly AppUpdateService _updates = new();
 
     public MainWindow(ThemeService themeService)
     {
@@ -40,6 +42,7 @@ public sealed partial class MainWindow : WindowEx
         InitializeComponent();
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _hotkeys = new HotkeyService(_hwnd);
 
         SystemBackdrop = new WinUIEx.TransparentTintBackdrop { TintColor = Microsoft.UI.Colors.Transparent };
         ConfigureWindow();
@@ -75,7 +78,36 @@ public sealed partial class MainWindow : WindowEx
 
         HideWindow();
 
+        // Autostart launches with --minimized: stay hidden in the tray instead of flashing the spotlight.
+        if (!Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--minimized", StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowWindow();
+        }
+
         _ = InitializeAsync();
+        _ = AutoCheckUpdatesAsync();
+    }
+
+    /// <summary>Silent background update check on startup, honouring AutoCheckUpdates. Only caches the
+    /// result (AppUpdateService.LastResult); the About page surfaces it.</summary>
+    private async Task AutoCheckUpdatesAsync()
+    {
+        try
+        {
+            if (!UserSettings.Load().AutoCheckUpdates)
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(8)).ConfigureAwait(true);
+            var info = await _updates.CheckAsync().ConfigureAwait(true);
+            if (info.Error is not null)
+                Log.Warning($"Auto update check failed: {info.Error}");
+            else
+                Log.Info($"Update check: current {info.CurrentVersion}, latest {info.LatestVersion}, hasUpdate={info.HasUpdate}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Auto update check failed", ex);
+        }
     }
 
     private readonly System.Collections.ObjectModel.ObservableCollection<ResultItem> _visibleResults = [];
@@ -455,6 +487,22 @@ public sealed partial class MainWindow : WindowEx
 
     private SettingsWindow? _settingsWindow;
 
+    /// <summary>Exits so a staged update script can replace the files and relaunch. The script waits on
+    /// Sox.App.exe, so the process has to be gone before it proceeds.</summary>
+    public void ExitForUpdate()
+    {
+        try
+        {
+            _tray.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Tray dispose during update failed", ex);
+        }
+
+        Application.Current.Exit();
+    }
+
     private void OpenSettings()
     {
         if (_settingsWindow is not null)
@@ -463,7 +511,7 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        _settingsWindow = new SettingsWindow(_themeService, _searchHost);
+        _settingsWindow = new SettingsWindow(_themeService, _searchHost, _updates, ExitForUpdate);
         _settingsWindow.Closed += (_, _) =>
         {
             _settingsWindow = null;
@@ -556,18 +604,24 @@ public sealed partial class MainWindow : WindowEx
         var pointer = System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(_wndProc);
         _originalWndProc = NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_WNDPROC, pointer);
 
-        if (!NativeMethods.RegisterHotKey(_hwnd, 1, NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT, NativeMethods.VK_SPACE))
+        _hotkeys.Pressed += () => DispatcherQueue.TryEnqueue(ToggleWindow);
+        ApplySummonHotkey(UserSettings.Load().SummonHotkey);
+    }
+
+    /// <summary>Binds (or re-binds) the summon hotkey from settings. Called at startup and whenever the
+    /// hotkey page saves, so a change takes effect without a restart.</summary>
+    private void ApplySummonHotkey(string hotkey)
+    {
+        if (!_hotkeys.Register(hotkey))
         {
-            var err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-            Log.Warning($"RegisterHotKey(Alt+Space) failed: error {err}");
+            Log.Warning($"Summon hotkey '{hotkey}' could not be registered");
         }
     }
 
     private IntPtr WndProcImpl(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg == NativeMethods.WM_HOTKEY && wParam == 1)
+        if (_hotkeys.HandleMessage(msg, wParam))
         {
-            DispatcherQueue.TryEnqueue(ToggleWindow);
             return IntPtr.Zero;
         }
 
@@ -677,6 +731,8 @@ public sealed partial class MainWindow : WindowEx
             var settings = UserSettings.Load();
             PushSearchContext(settings);
             _tray.Show(!settings.HideTrayIcon);
+            ApplySummonHotkey(settings.SummonHotkey);
+            StartupService.SetEnabled(settings.StartWithWindows);
             ResizeToContent();
         }
         catch (Exception ex)
@@ -1799,6 +1855,7 @@ public sealed partial class MainWindow : WindowEx
             _queryProviders.SuggestionsUpdated -= OnSuggestionsUpdated;
             _queryProviders.Dispose();
             _activationServer.Dispose();
+            _hotkeys.Dispose();
             _everythingIpc.Dispose();
             _searchHost.Dispose();
             _tray.Dispose();

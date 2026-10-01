@@ -8,9 +8,30 @@
     <ScrollViewer Padding="24,20,24,24">
         <StackPanel MaxWidth="1000" Spacing="4">
 
-            <controls:SettingsCard Header="Sox" Description="Windows 原生文件搜索工具">
-                <Button Click="OnCheckUpdate" Content="检查更新" />
+            <controls:SettingsCard x:Name="VersionCard" Description="Windows 原生文件搜索工具" Header="Sox">
+                <TextBlock x:Name="CurrentVersionText" VerticalAlignment="Center" />
             </controls:SettingsCard>
+
+            <controls:SettingsCard Description="检查是否有新版本" Header="版本与更新">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock
+                        x:Name="UpdateStatusText"
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Button x:Name="CheckButton" Click="OnCheckUpdate" Content="检查更新" />
+                    <Button
+                        x:Name="UpdateButton"
+                        Click="OnApplyUpdate"
+                        Content="一键更新"
+                        Visibility="Collapsed" />
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <ProgressBar
+                x:Name="UpdateProgress"
+                MaxWidth="1000"
+                Visibility="Collapsed" />
 
         </StackPanel>
     </ScrollViewer>

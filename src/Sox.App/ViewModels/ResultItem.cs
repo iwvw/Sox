@@ -92,6 +92,13 @@ internal sealed class ResultItem : INotifyPropertyChanged
         ? Instant.Description
         : IsDir ? Path : System.IO.Path.GetDirectoryName(Path) ?? Path;
 
+    // True when there is nothing to show on the second line (a bare application with no description).
+    // The template then drops the subtitle row and centres the name at a larger size, so an app-only
+    // result reads as one big label rather than a title with an empty line under it.
+    public bool IsNameOnly => string.IsNullOrWhiteSpace(PathDisplay);
+
+    public bool HasSubtitle => !IsNameOnly;
+
     /// <summary>
     /// Loads the shell icon on the STA worker thread and raises PropertyChanged on the UI thread.
     /// Constructing the item must stay cheap so the search pipeline never blocks on COM/GDI.

@@ -53,6 +53,11 @@ public sealed class SearchResultRankComparer : IComparer<SearchResult>
     /// <summary>Directory the search is taking place in (an open dialog's folder), for the context bonus.</summary>
     public string? ContextDirectory { get; init; }
 
+    /// <summary>Per-path bonus from the user's folder-priority rules (see PathPriorityResolver). Applied
+    /// on top of the behaviour score so a High folder floats and an Uncommon one sinks, without the
+    /// exclusion rules needing to live in this comparer. Null when the user has no such rules.</summary>
+    public Func<string, double>? PathPriorityBonus { get; init; }
+
     public SearchResultRankComparer(IReadOnlyDictionary<string, double> behaviorScores)
         : this(behaviorScores, new Dictionary<string, int>())
     {
@@ -121,6 +126,8 @@ public sealed class SearchResultRankComparer : IComparer<SearchResult>
         if (ContextDirectory is { Length: > 0 } ctx &&
             string.Equals(result.ContextDirectory.TrimEnd('\\'), ctx.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
             score += HistoryRankWeights.ContextBonus;
+        if (PathPriorityBonus is { } bonus)
+            score += bonus(result.Path);
 
         result.BehaviorScoreCache = score;
         return score;

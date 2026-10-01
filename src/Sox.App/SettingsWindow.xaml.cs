@@ -12,13 +12,17 @@ public sealed partial class SettingsWindow : WindowEx
 {
     private readonly ThemeService _themeService;
     private readonly SearchHost _searchHost;
+    private readonly AppUpdateService _updates;
+    private readonly Action _exitForUpdate;
     private readonly Dictionary<string, object> _pages = new();
     private Microsoft.UI.Xaml.Media.SystemBackdrop? _windowBackdrop;
 
-    public SettingsWindow(ThemeService themeService, SearchHost searchHost)
+    public SettingsWindow(ThemeService themeService, SearchHost searchHost, AppUpdateService updates, Action exitForUpdate)
     {
         _themeService = themeService;
         _searchHost = searchHost;
+        _updates = updates;
+        _exitForUpdate = exitForUpdate;
         InitializeComponent();
 
         ApplyWindowTheme();
@@ -100,10 +104,13 @@ public sealed partial class SettingsWindow : WindowEx
         {
             page = tag switch
             {
+                "general" => new GeneralPage(),
                 "appearance" => CreateAppearancePage(),
+                "hotkeys" => new HotkeyPage(),
                 "search" => new SearchPage(),
                 "index" => new IndexPage(_searchHost),
-                "about" => new AboutPage(),
+                "websearch" => new WebSearchPage(),
+                "about" => new AboutPage(_updates, _exitForUpdate),
                 _ => null,
             };
 

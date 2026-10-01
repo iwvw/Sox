@@ -52,6 +52,9 @@ Sox：Windows 原生文件搜索工具。后端复用 Lertaro 核心（USN/MFT �
 | Provider | 前端查询源（ADR-0015）：计算器/网页/应用/命令/窗口/剪贴板，走 IQueryProvider |
 | 内嵌 mini 窗 | 贴合文件对话框的独立小搜索窗（ADR-0012），选中回填路径 |
 | 单实例激活 | `Program` 用命名 Mutex `Sox.SingleInstance` 挡住第二个 App 进程；被挡下的进程把启动请求经命名管道 `Sox.App.Activation` 转给首实例，由 `SingleInstanceActivationServer` 唤出已有窗口 |
+| 优先级 | 按目录给搜索结果分层（高/正常/不常用/不索引），`PathPriorityResolver` 前缀匹配，High/Uncommon 转行为分加成、Excluded 硬过滤（ADR-0021） |
+| 自更新 | App 侧 `AppUpdateService` 查 GitHub Releases、下载匹配形态的产物、生成 cmd 脚本在退出后覆盖并重启（ADR-0021） |
+| 呼出热键 | `UserSettings.SummonHotkey`（默认 Alt+Space），`HotkeyService` 注册，设置页改动实时重注册 |
 
 ## 关键数值（设计目标）
 
