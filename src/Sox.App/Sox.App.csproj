@@ -47,8 +47,13 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>
 
+  <!-- The dev build keeps a framework-dependent Service beside the App so F5 debugging finds it
+       without a full publish. SelfContained/Platform are pinned here because a publish run passes
+       those down as global properties, and an empty RuntimeIdentifier with SelfContained=true is
+       NETSDK1191. The published, self-contained Service is produced separately below. -->
   <Target Name="BuildAndCopyService" BeforeTargets="Build">
-    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=">
+    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Build"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false;Platform=AnyCPU">
       <Output TaskParameter="TargetOutputs" ItemName="ServiceBuildOutputs" />
     </MSBuild>
   </Target>
@@ -58,6 +63,19 @@
       <ServiceFiles Include="..\Sox.Service\bin\$(Configuration)\net10.0-windows\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(ServiceFiles)" DestinationFiles="@(ServiceFiles->'$(OutDir)Service\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Publish the Service self-contained into the App's publish output, under Service\, the layout
+       ServiceBootstrapper.ResolveServiceExe and ServicePluginLoader both expect (the latter scans
+       Service\Plugins for aliases). Framework-dependent would leave a portable copy broken on any
+       machine without the .NET desktop runtime, which defeats the portable build. The nested build
+       pins SelfContained=true and Platform explicitly so the outer publish's global properties do
+       not leak in. -->
+  <Target Name="PublishServiceToPublishDir" AfterTargets="Publish">
+    <MSBuild Projects="..\Sox.Service\Service.csproj" Targets="Restore;Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;Platform=$(Platform);PublishDir=$(PublishDir)Service\">
+      <Output TaskParameter="TargetOutputs" ItemName="ServicePublishOutputs" />
+    </MSBuild>
   </Target>
 
   <ItemGroup>

@@ -26,6 +26,7 @@ public sealed partial class MainWindow : WindowEx
     private readonly Services.QueryProviders.QueryProviderRegistry _queryProviders = Services.QueryProviders.QueryProviderRegistry.CreateDefault();
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _debounceTimer;
     private readonly List<ResultItem> _results = [];
+    private readonly SingleInstanceActivationServer _activationServer;
 
     private IntPtr _hwnd;
     private NativeMethods.WndProc? _wndProc;
@@ -64,6 +65,11 @@ public sealed partial class MainWindow : WindowEx
         _themeService.ThemeChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplyTheme);
         App.Current.SettingsChanged += OnAppSettingsChanged;
         _queryProviders.SuggestionsUpdated += OnSuggestionsUpdated;
+
+        // A repeat launch (desktop icon, Start menu, pinned taskbar) is blocked by Program's mutex and
+        // forwarded over a pipe; answer it by summoning this window instead of doing nothing.
+        _activationServer = new SingleInstanceActivationServer(
+            () => DispatcherQueue.TryEnqueue(ShowWindow));
 
         SetupTray();
 
@@ -1239,6 +1245,12 @@ public sealed partial class MainWindow : WindowEx
                 return;
             }
 
+            // Capture the keyword before HideWindow: it resets the search box, so reading it afterwards
+            // recorded an empty keyword and SearchHistoryStore.Record dropped the entry -- file/folder
+            // opens never entered history and so were never ranked back to the top.
+            var kind = item.IsDir ? Sox.PluginSdk.Services.HistoryEntryKind.Folder : Sox.PluginSdk.Services.HistoryEntryKind.File;
+            var query = SearchBox.Text;
+
             Process.Start(new ProcessStartInfo
             {
                 FileName = item.Path,
@@ -1246,9 +1258,6 @@ public sealed partial class MainWindow : WindowEx
             });
 
             HideWindow();
-
-            var kind = item.IsDir ? Sox.PluginSdk.Services.HistoryEntryKind.Folder : Sox.PluginSdk.Services.HistoryEntryKind.File;
-            var query = SearchBox.Text;
             Task.Run(() => Sox.Core.SearchHistoryStore.Record(query, item.Path, kind));
         }
         catch (Exception ex)
@@ -1789,6 +1798,7 @@ public sealed partial class MainWindow : WindowEx
             App.Current.SettingsChanged -= OnAppSettingsChanged;
             _queryProviders.SuggestionsUpdated -= OnSuggestionsUpdated;
             _queryProviders.Dispose();
+            _activationServer.Dispose();
             _everythingIpc.Dispose();
             _searchHost.Dispose();
             _tray.Dispose();

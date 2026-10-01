@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- Shared product identity for every project in the solution. Imported before each project body,
+       so a project that sets its own Version (the Lertaro-derived Core/Service/PluginSdk snapshots)
+       keeps it; only projects without one (Sox.App) inherit this. CI overrides with -p:Version. -->
+  <PropertyGroup>
+    <SoxVersion Condition="'$(SoxVersion)' == ''">0.1.0</SoxVersion>
+    <VersionPrefix Condition="'$(VersionPrefix)' == ''">$(SoxVersion)</VersionPrefix>
+    <Version Condition="'$(Version)' == ''">$(VersionPrefix)</Version>
+    <Product>Sox</Product>
+    <Authors>DSUK</Authors>
+    <Company>DSUK</Company>
+    <Copyright>Copyright © 2026 DSUK</Copyright>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/iwvw/Sox</RepositoryUrl>
+  </PropertyGroup>
+
+</Project>
