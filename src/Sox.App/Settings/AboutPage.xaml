@@ -5,8 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="24,20,24,24">
-        <StackPanel MaxWidth="1000" Spacing="4">
+    <ScrollViewer Padding="24,20,24,24" HorizontalContentAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Stretch" Spacing="4">
 
             <controls:SettingsCard x:Name="VersionCard" Description="Windows 原生文件搜索工具" Header="Sox">
                 <TextBlock x:Name="CurrentVersionText" VerticalAlignment="Center" />
@@ -14,19 +14,24 @@
 
             <controls:SettingsCard Description="检查是否有新版本" Header="版本与更新">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock
-                        x:Name="UpdateStatusText"
-                        MinWidth="160"
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <Button x:Name="CheckButton" Click="OnCheckUpdate" Content="检查更新" />
                     <Button
                         x:Name="UpdateButton"
                         Click="OnApplyUpdate"
                         Content="一键更新"
+                        Style="{StaticResource AccentButtonStyle}"
                         Visibility="Collapsed" />
                 </StackPanel>
             </controls:SettingsCard>
+
+            <!--  Status sits on its own full-width row so a long message wraps instead of squeezing the
+                  card header into a vertical column.  -->
+            <TextBlock
+                x:Name="UpdateStatusText"
+                Margin="16,2,16,8"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
 
             <ProgressBar
                 x:Name="UpdateProgress"

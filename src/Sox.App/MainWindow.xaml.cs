@@ -33,6 +33,7 @@ public sealed partial class MainWindow : WindowEx
     private IntPtr _originalWndProc;
     private bool _themeInitialized;
     private readonly HotkeyService _hotkeys;
+    private readonly ImeController _ime;
     private readonly AppUpdateService _updates = new();
 
     public MainWindow(ThemeService themeService)
@@ -43,6 +44,7 @@ public sealed partial class MainWindow : WindowEx
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _hotkeys = new HotkeyService(_hwnd);
+        _ime = new ImeController(_hwnd);
 
         SystemBackdrop = new WinUIEx.TransparentTintBackdrop { TintColor = Microsoft.UI.Colors.Transparent };
         ConfigureWindow();
@@ -477,7 +479,7 @@ public sealed partial class MainWindow : WindowEx
     private void SetupTray()
     {
         _tray.OpenRequested += () => DispatcherQueue.TryEnqueue(ShowWindow);
-        _tray.SettingsRequested += () => DispatcherQueue.TryEnqueue(OpenSettings);
+        _tray.SettingsRequested += () => DispatcherQueue.TryEnqueue(() => OpenSettings());
         _tray.AboutRequested += () => DispatcherQueue.TryEnqueue(ShowAbout);
         _tray.ExitRequested += () => DispatcherQueue.TryEnqueue(ExitApp);
 
@@ -503,15 +505,22 @@ public sealed partial class MainWindow : WindowEx
         Application.Current.Exit();
     }
 
-    private void OpenSettings()
+    private void OpenSettings() => OpenSettings(null);
+
+    private void OpenSettings(string? initialTag)
     {
         if (_settingsWindow is not null)
         {
             _settingsWindow.Activate();
+            if (initialTag is not null)
+            {
+                _settingsWindow.NavigateTo(initialTag);
+            }
+
             return;
         }
 
-        _settingsWindow = new SettingsWindow(_themeService, _searchHost, _updates, ExitForUpdate);
+        _settingsWindow = new SettingsWindow(_themeService, _searchHost, _updates, ExitForUpdate, initialTag);
         _settingsWindow.Closed += (_, _) =>
         {
             _settingsWindow = null;
@@ -527,10 +536,7 @@ public sealed partial class MainWindow : WindowEx
         _settingsWindow.Activate();
     }
 
-    private void ShowAbout()
-    {
-        OpenSettings();
-    }
+    private void ShowAbout() => OpenSettings("about");
 
     private void ExitApp()
     {
@@ -1080,6 +1086,14 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
+        // Keep the box to ASCII while not in a network-search scope, so file search never needs an IME
+        // (the index matches pinyin, so Latin letters still find Chinese names). Applied here rather than
+        // by disabling the IME, so the user's input method is left alone.
+        if (_scopeProvider is null && UserSettings.Load().AsciiOnlySearchBox && HasNonAscii(SearchBox.Text))
+        {
+            StripNonAscii();
+        }
+
         var text = SearchBox.Text;
 
         // Enter scope the instant the user types "keyword " (a known keyword followed by a space) and no
@@ -1135,6 +1149,73 @@ public sealed partial class MainWindow : WindowEx
     {
         SearchBox.Text = string.Empty;
         SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    // Try to keep the box in English input mode while focused, so an IME candidate window does not pop
+    // up during file search. Network-search scopes are exempt (a search term is free text). Best-effort:
+    // legacy IMM32 IMEs obey this, TSF-based third-party IMEs may not (see ImeController).
+    private void SearchBox_GotFocus(object sender, RoutedEventArgs e) => ApplyImeMode();
+
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e) => _ime.Restore();
+
+    private void ApplyImeMode()
+    {
+        if (_scopeProvider is not null || !UserSettings.Load().AsciiOnlySearchBox)
+        {
+            _ime.Restore();
+            return;
+        }
+
+        _ime.ForceEnglish();
+    }
+
+    private static bool HasNonAscii(string text)
+    {
+        foreach (var c in text)
+        {
+            if (c > 0x7F)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Removes every non-ASCII character in place, preserving the caret by counting how many characters
+    // before it survive. Guarded by _resetting so the reassignment does not re-enter this handler.
+    private void StripNonAscii()
+    {
+        var original = SearchBox.Text;
+        var caret = SearchBox.SelectionStart;
+
+        var builder = new System.Text.StringBuilder(original.Length);
+        var keptBeforeCaret = 0;
+        for (var i = 0; i < original.Length; i++)
+        {
+            if (original[i] > 0x7F)
+            {
+                continue;
+            }
+
+            if (i < caret)
+            {
+                keptBeforeCaret++;
+            }
+
+            builder.Append(original[i]);
+        }
+
+        _resetting = true;
+        try
+        {
+            SearchBox.Text = builder.ToString();
+            SearchBox.SelectionStart = Math.Clamp(keptBeforeCaret, 0, SearchBox.Text.Length);
+        }
+        finally
+        {
+            _resetting = false;
+        }
     }
 
     // PreviewKeyDown runs before the TextBox applies the edit, so SearchBox.Text still reflects the
@@ -1702,6 +1783,9 @@ public sealed partial class MainWindow : WindowEx
 
         ClearButton.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Collapsed : Visibility.Visible;
         SearchBox.Focus(FocusState.Programmatic);
+
+        // A network-search scope allows free text, so let the IME back to the user's own state.
+        _ime.Restore();
     }
 
     private void ExitScope()
@@ -1714,13 +1798,41 @@ public sealed partial class MainWindow : WindowEx
         _scopeProvider = null;
         _scopeKeyword = string.Empty;
         ScopeBadge.Visibility = Visibility.Collapsed;
+        ScopeIcon.Source = null;
+
+        // Back to file-search mode: re-assert English for the box.
+        ApplyImeMode();
     }
 
     private void ShowScope(QueryScope scope)
     {
         ScopeBadge.Visibility = Visibility.Visible;
+
+        // Just the engine's icon (no label). Prefer a real icon; fall back to its glyph while the image
+        // loads, or when the engine has no custom icon. IconLoader resolves on the UI thread, so a
+        // cached icon is returned inline.
+        ScopeIcon.Source = null;
         ScopeGlyph.Glyph = scope.Glyph;
-        ScopeLabel.Text = scope.Name;
+        if (!string.IsNullOrWhiteSpace(scope.IconPath))
+        {
+            // Rasterise at the physical pixel size of the 28-DIP badge so it renders 1:1, not minified.
+            var pixelSize = (int)Math.Ceiling(28 * ScaleFactor());
+            var icon = IconLoader.Get(scope.IconPath, DispatcherQueue, image =>
+            {
+                // Ignore a late arrival if the user already left the scope or switched engines.
+                if (_scopeProvider is not null && string.Equals(_scopeKeyword, scope.Keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    ScopeIcon.Source = image;
+                    ScopeGlyph.Glyph = string.Empty;
+                }
+            }, pixelSize);
+
+            if (icon is not null)
+            {
+                ScopeIcon.Source = icon;
+                ScopeGlyph.Glyph = string.Empty;
+            }
+        }
     }
 
     private async Task LoadRecentAsync()

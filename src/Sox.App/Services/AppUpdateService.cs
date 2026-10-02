@@ -112,11 +112,27 @@ public sealed class AppUpdateService
         }
         catch (Exception ex)
         {
-            var result = new AppUpdateInfo(CurrentVersion, null, false, null, null, ex.Message);
+            var result = new AppUpdateInfo(CurrentVersion, null, false, null, null, DescribeError(ex));
             LastResult = result;
             return result;
         }
     }
+
+    /// <summary>Maps a transport failure to a user-facing message. The raw HttpRequestException text
+    /// ("Response status code does not indicate success: 404") is meaningless to a user; the 404 case in
+    /// particular almost always means the release repo is private and no token is configured.</summary>
+    private static string DescribeError(Exception ex) => ex switch
+    {
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } =>
+            "无法访问发布仓库（404）。若仓库为私有，请到「常规」页填写 GitHub Token。",
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized } =>
+            "发布仓库鉴权失败（401），请检查 GitHub Token 是否有效。",
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.Forbidden } =>
+            "发布仓库拒绝访问（403），请检查 GitHub Token 的权限。",
+        TaskCanceledException => "请求超时，请检查网络连接。",
+        HttpRequestException => "网络请求失败，请检查网络连接。",
+        _ => ex.Message,
+    };
 
     public async Task<AppUpdateInfo> PrepareUpdateAsync(IProgress<double>? progress = null, CancellationToken ct = default)
     {

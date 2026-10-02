@@ -70,6 +70,13 @@ public class UserSettings
     // (fzf's own --exact mode). Default on, so an upgrade never changes what a query matches.
     public bool EnableFuzzyMatch { get; set; } = true;
 
+    // When on, the spotlight search box only accepts ASCII letters/digits/punctuation (and drops other
+    // characters as they are typed), so an IME is never needed for the common file search -- the index
+    // is pinyin-aware, so typing Latin letters still finds Chinese names. Network-search scopes ("g ")
+    // are exempt, since a search term there is free text. Default on; the filter is applied in the app,
+    // never by touching the OS input method.
+    public bool AsciiOnlySearchBox { get; set; } = true;
+
     // How spaces and the pipe '|' bind when a query mixes the two.
     //
     // false (default) is AND-first: the space binds tighter, so a query of "report | summary 2024"

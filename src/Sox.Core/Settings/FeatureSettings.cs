@@ -47,12 +47,12 @@ public static class WebSearchDefaults
 {
     public static List<WebSearchEngineSetting> Create() =>
     [
-        new() { Keyword = "bd", Name = "百度", UrlTemplate = "https://www.baidu.com/s?wd=%s", SuggestUrl = "https://suggestion.baidu.com/su?wd=%s&cb=window.bdsug.sug" },
-        new() { Keyword = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q=%s", SuggestUrl = "https://suggestqueries.google.com/complete/search?client=firefox&q=%s" },
-        new() { Keyword = "bing", Name = "Bing", UrlTemplate = "https://www.bing.com/search?q=%s", SuggestUrl = "https://api.bing.com/osjson.aspx?query=%s" },
-        new() { Keyword = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q=%s" },
-        new() { Keyword = "wiki", Name = "Wikipedia", UrlTemplate = "https://zh.wikipedia.org/wiki/Special:Search?search=%s" },
-        new() { Keyword = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query=%s" },
+        new() { Keyword = "bd", Name = "百度", UrlTemplate = "https://www.baidu.com/s?wd=%s", SuggestUrl = "https://suggestion.baidu.com/su?wd=%s&cb=window.bdsug.sug", IconPath = "simple-icons:baidu" },
+        new() { Keyword = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q=%s", SuggestUrl = "https://suggestqueries.google.com/complete/search?client=firefox&q=%s", IconPath = "logos:google-icon" },
+        new() { Keyword = "bing", Name = "Bing", UrlTemplate = "https://www.bing.com/search?q=%s", SuggestUrl = "https://api.bing.com/osjson.aspx?query=%s", IconPath = "logos:bing" },
+        new() { Keyword = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q=%s", IconPath = "logos:github-icon" },
+        new() { Keyword = "wiki", Name = "Wikipedia", UrlTemplate = "https://zh.wikipedia.org/wiki/Special:Search?search=%s", IconPath = "simple-icons:wikipedia" },
+        new() { Keyword = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query=%s", IconPath = "logos:youtube-icon" },
     ];
 }
 

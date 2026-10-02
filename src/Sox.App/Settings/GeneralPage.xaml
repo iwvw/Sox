@@ -5,8 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="24,20,24,24">
-        <StackPanel MaxWidth="1000" Spacing="4">
+    <ScrollViewer Padding="24,20,24,24" HorizontalContentAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Stretch" Spacing="4">
 
             <controls:SettingsCard Description="登录 Windows 后自动启动 Sox" Header="开机自启">
                 <ToggleSwitch x:Name="StartupToggle" Toggled="OnStartupToggled" />

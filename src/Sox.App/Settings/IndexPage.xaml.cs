@@ -12,14 +12,16 @@ namespace Sox.App.Settings;
 public sealed partial class IndexPage : Page
 {
     private readonly SearchHost _searchHost;
+    private readonly Microsoft.UI.Xaml.Window _ownerWindow;
     private CancellationTokenSource? _statusCts;
     private MachineSettings? _machineSettings;
     private readonly UserSettings _settings = UserSettings.Load();
     private readonly ObservableCollection<PriorityRow> _priorityRows = new();
 
-    public IndexPage(SearchHost searchHost)
+    public IndexPage(SearchHost searchHost, Microsoft.UI.Xaml.Window ownerWindow)
     {
         _searchHost = searchHost;
+        _ownerWindow = ownerWindow;
         InitializeComponent();
 
         foreach (var rule in _settings.PathPriorities)
@@ -167,20 +169,39 @@ public sealed partial class IndexPage : Page
 
     private async Task<bool> EditPriorityAsync(PathPriorityRuleSetting rule, bool isNew)
     {
-        var path = new TextBox { Header = "目录", Text = rule.Path };
-        var pick = new Button { Content = "浏览…", Margin = new Thickness(8, 0, 0, 0) };
+        var path = new TextBox { Text = rule.Path };
+        var pick = new Button
+        {
+            Content = "浏览…",
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
         pick.Click += async (_, _) =>
         {
             var picker = new Windows.Storage.Pickers.FolderPicker();
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.Current.MainWindow));
+            // Parent the picker to the settings window, not the hidden spotlight: owning it to the
+            // spotlight left the dialog behind that topmost window, only surfacing when it was summoned.
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow));
             picker.FileTypeFilter.Add("*");
             var folder = await picker.PickSingleFolderAsync();
             if (folder is not null)
                 path.Text = folder.Path;
         };
-        var pathRow = new StackPanel { Orientation = Orientation.Horizontal };
+
+        // Label above, then a two-column row (textbox stretches, button auto-width on the right). A
+        // horizontal StackPanel could not stretch the textbox, and a TextBox.Header pushed the input
+        // down while the header-less button stayed at the top -- the two controls came out misaligned.
+        var pathRow = new Grid { ColumnSpacing = 8 };
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(path, 0);
+        Grid.SetColumn(pick, 1);
         pathRow.Children.Add(path);
         pathRow.Children.Add(pick);
+
+        var pathField = new StackPanel { Spacing = 6 };
+        pathField.Children.Add(new TextBlock { Text = "目录" });
+        pathField.Children.Add(pathRow);
 
         var combo = new ComboBox { Header = "优先级", MinWidth = 200 };
         combo.Items.Add("高（优先显示）");
@@ -196,7 +217,7 @@ public sealed partial class IndexPage : Page
         };
 
         var panel = new StackPanel { Spacing = 12, Width = 460 };
-        panel.Children.Add(pathRow);
+        panel.Children.Add(pathField);
         panel.Children.Add(combo);
 
         var dialog = new ContentDialog

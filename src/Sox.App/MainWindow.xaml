@@ -38,36 +38,36 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!--  Scope badge: shown when a keyword scope is active ("g "), naming the engine.  -->
-                    <Border
+                    <!--  Scope badge: shown when a keyword scope is active ("g "). Just the engine's
+                          icon, sized up; no chip background or label.  -->
+                    <Grid
                         x:Name="ScopeBadge"
                         Grid.Column="0"
-                        Margin="0,0,10,0"
-                        Padding="10,5"
+                        Width="28"
+                        Height="28"
+                        Margin="0,0,6,0"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                        CornerRadius="6"
                         Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon
-                                x:Name="ScopeGlyph"
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock
-                                x:Name="ScopeLabel"
-                                VerticalAlignment="Center"
-                                FontSize="15"
-                                FontWeight="SemiBold" />
-                        </StackPanel>
-                    </Border>
+                        <Image
+                            x:Name="ScopeIcon"
+                            Width="28"
+                            Height="28" />
+                        <FontIcon
+                            x:Name="ScopeGlyph"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="22"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
 
                         <TextBox
                             x:Name="SearchBox"
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontSize="18"
+                            GotFocus="SearchBox_GotFocus"
                             KeyDown="SearchBox_KeyDown"
+                            LostFocus="SearchBox_LostFocus"
                             PlaceholderText="搜索文件、文件夹和应用"
                             PreviewKeyDown="SearchBox_PreviewKeyDown"
                             Style="{StaticResource SoxSearchBoxStyle}"

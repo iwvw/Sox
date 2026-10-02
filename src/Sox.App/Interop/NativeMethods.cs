@@ -175,4 +175,39 @@ internal static class NativeMethods
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
+
+    // ---- IME (imm32) ----
+    // Used to try to force the search box to English input mode while focused. Works for legacy IMM32
+    // IMEs (e.g. the built-in Microsoft Pinyin); TSF-based third-party IMEs (WeChat, Sogou) may ignore
+    // these. See TrySetEnglishInputMode.
+    public const int IME_CMODE_ALPHANUMERIC = 0x0000;
+    public const int IME_CMODE_NATIVE = 0x0001;
+    public const int IME_CMODE_LANGUAGE = 0x0003;
+
+    [DllImport("imm32.dll")]
+    public static extern IntPtr ImmGetContext(IntPtr hWnd);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmGetConversionStatus(IntPtr hIMC, out int lpfdwConversion, out int lpfdwSentence);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmSetConversionStatus(IntPtr hIMC, int fdwConversion, int fdwSentence);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmGetOpenStatus(IntPtr hIMC);
+
+    [DllImport("imm32.dll")]
+    public static extern bool ImmSetOpenStatus(IntPtr hIMC, bool fOpen);
+
+    // ---- Child window enumeration (for locating the WinUI text-input host HWND) ----
+    public delegate bool EnumChildWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumChildWindows(IntPtr hWndParent, EnumChildWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 }

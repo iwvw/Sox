@@ -48,6 +48,11 @@ internal static class UserSettingsPersistence
         if (settings != null)
         {
             lock (CacheLock) _lastJsonOnDisk = json;
+
+            // TryParse may have backfilled fields on a settings file written by an older version (e.g.
+            // web-search icons). Persist that once so it survives and the settings UI reads the same
+            // values, instead of the backfill living only in this in-memory instance.
+            PersistMigrations(settings, json);
             return settings;
         }
         if (json != null)
@@ -63,6 +68,25 @@ internal static class UserSettingsPersistence
             });
         }
         return settings ?? new UserSettings();
+    }
+
+    private static void PersistMigrations(UserSettings settings, string? originalJson)
+    {
+        try
+        {
+            var migrated = JsonSerializer.Serialize(settings, WriteOptions);
+            if (string.Equals(migrated, originalJson, StringComparison.Ordinal))
+                return;
+
+            if (TryPersist(migrated, SettingsPath))
+            {
+                lock (CacheLock) _lastJsonOnDisk = migrated;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"[UserSettings] Persisting migrations failed: {ex.Message}", LogLevel.Warn);
+        }
     }
 
     private static string? TryReadMainJson()
@@ -92,6 +116,7 @@ internal static class UserSettingsPersistence
         {
             var settings = JsonSerializer.Deserialize<UserSettings>(json) ?? new UserSettings();
             NormalizeHotkeys(settings);
+            NormalizeWebSearchIcons(settings);
             return settings;
         }
         catch (Exception ex)
@@ -105,6 +130,27 @@ internal static class UserSettingsPersistence
     {
         if (string.IsNullOrWhiteSpace(settings.Hotkeys.ToggleWindowHotkey))
             settings.Hotkeys.ToggleWindowHotkey = new HotkeyPageSettings().ToggleWindowHotkey;
+    }
+
+    /// <summary>Backfills an icon for the built-in engines on settings files written before icons
+    /// existed. Only touches an engine whose keyword AND url still match the shipped default, so a
+    /// user-customised engine is never overwritten.</summary>
+    public static void NormalizeWebSearchIcons(UserSettings settings)
+    {
+        if (settings.WebSearchEngines is null || settings.WebSearchEngines.Count == 0)
+            return;
+
+        foreach (var engine in settings.WebSearchEngines)
+        {
+            if (!string.IsNullOrWhiteSpace(engine.IconPath))
+                continue;
+
+            var def = WebSearchDefaults.Create().FirstOrDefault(d =>
+                string.Equals(d.Keyword, engine.Keyword, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.UrlTemplate, engine.UrlTemplate, StringComparison.OrdinalIgnoreCase));
+            if (def is not null)
+                engine.IconPath = def.IconPath;
+        }
     }
 
     /// <summary>

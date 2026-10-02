@@ -24,7 +24,7 @@ public sealed partial class AboutPage : Page
     private async void OnCheckUpdate(object sender, RoutedEventArgs e)
     {
         CheckButton.IsEnabled = false;
-        UpdateStatusText.Text = "正在检查…";
+        ShowStatus("正在检查…", secondary: true);
         try
         {
             var info = await _updates.CheckAsync();
@@ -42,21 +42,29 @@ public sealed partial class AboutPage : Page
 
         if (info.Error is not null)
         {
-            UpdateStatusText.Text = "检查失败：" + info.Error;
+            ShowStatus("检查失败：" + info.Error, secondary: false);
             UpdateButton.Visibility = Visibility.Collapsed;
             return;
         }
 
         if (info.HasUpdate)
         {
-            UpdateStatusText.Text = $"发现新版本 {info.LatestVersion}";
+            ShowStatus($"发现新版本 {info.LatestVersion}", secondary: false);
             UpdateButton.Visibility = Visibility.Visible;
         }
         else
         {
-            UpdateStatusText.Text = "已是最新版本";
+            ShowStatus("已是最新版本", secondary: true);
             UpdateButton.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void ShowStatus(string text, bool secondary)
+    {
+        UpdateStatusText.Text = text;
+        UpdateStatusText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            secondary ? "TextFillColorSecondaryBrush" : "TextFillColorPrimaryBrush"];
+        UpdateStatusText.Visibility = Visibility.Visible;
     }
 
     private async void OnApplyUpdate(object sender, RoutedEventArgs e)
@@ -64,27 +72,28 @@ public sealed partial class AboutPage : Page
         UpdateButton.IsEnabled = false;
         CheckButton.IsEnabled = false;
         UpdateProgress.Visibility = Visibility.Visible;
-        UpdateStatusText.Text = "正在下载…";
+        UpdateProgress.Value = 0;
+        ShowStatus("正在下载…", secondary: true);
 
         try
         {
             var progress = new Progress<double>(p =>
             {
                 UpdateProgress.Value = p * 100;
-                UpdateStatusText.Text = $"正在下载… {p * 100:F0}%";
+                ShowStatus($"正在下载… {p * 100:F0}%", secondary: true);
             });
 
             var info = await _updates.PrepareUpdateAsync(progress);
             if (info.Error is not null)
             {
-                UpdateStatusText.Text = info.Error;
+                ShowStatus(info.Error, secondary: false);
                 UpdateProgress.Visibility = Visibility.Collapsed;
                 UpdateButton.IsEnabled = true;
                 CheckButton.IsEnabled = true;
                 return;
             }
 
-            UpdateStatusText.Text = "即将重启并完成更新…";
+            ShowStatus("即将重启并完成更新…", secondary: true);
 
             var script = _updates.ConsumePendingScript();
             if (script is not null)
@@ -102,7 +111,7 @@ public sealed partial class AboutPage : Page
         }
         catch (Exception ex)
         {
-            UpdateStatusText.Text = "更新失败：" + ex.Message;
+            ShowStatus("更新失败：" + ex.Message, secondary: false);
             UpdateProgress.Visibility = Visibility.Collapsed;
             UpdateButton.IsEnabled = true;
             CheckButton.IsEnabled = true;

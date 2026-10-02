@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media;
 using Sox.App.Services;
 using Sox.App.Services.QueryProviders;
 using Sox.Core;
@@ -9,7 +9,7 @@ namespace Sox.App.ViewModels;
 internal sealed class ResultItem : INotifyPropertyChanged
 {
     private string _shortcutText = string.Empty;
-    private BitmapImage? _icon;
+    private ImageSource? _icon;
     private int _iconRequestedSize;
 
     /// <summary>File-result form: wraps one core search result.</summary>
@@ -52,10 +52,13 @@ internal sealed class ResultItem : INotifyPropertyChanged
 
     public string Query { get; }
 
-    /// <summary>Glyph to show instead of a loaded icon; empty when a shell icon is used.</summary>
-    public string Glyph => Instant?.Glyph ?? string.Empty;
+    /// <summary>Glyph to show instead of a loaded icon; empty when a shell icon is used. A custom icon
+    /// spec (Iconify / image URL / image file) suppresses the glyph so the two never overlap.</summary>
+    public string Glyph => Instant?.IconPath is { Length: > 0 } spec && IconLoader.IsIconSpec(spec)
+        ? string.Empty
+        : Instant?.Glyph ?? string.Empty;
 
-    public BitmapImage? Icon
+    public ImageSource? Icon
     {
         get => _icon;
         private set
@@ -116,9 +119,25 @@ internal sealed class ResultItem : INotifyPropertyChanged
 
         _iconRequestedSize = pixelSize;
 
-        // A row that shows a glyph (URL / calculator / window / command) must not also fetch a shell
-        // icon: the instant result has no real file behind it, so Path is the URL/argument, and the
-        // shell would hand back a generic document icon that sits under the glyph and muddies it.
+        var spec = Instant?.IconPath;
+
+        // A custom icon spec (Iconify name / image URL / image file) always wins, even when a glyph is
+        // also set as the fallback. A plain path (an .exe / .lnk / .url the shell must resolve) is NOT a
+        // spec -- it falls through to the shell-icon path below, which is the only thing that can render
+        // an executable's icon.
+        if (!string.IsNullOrWhiteSpace(spec) && IconLoader.IsIconSpec(spec))
+        {
+            var resolved = IconLoader.Get(spec, dispatcher, image => Icon = image, pixelSize);
+            if (resolved is not null)
+            {
+                Icon = resolved;
+            }
+
+            return;
+        }
+
+        // No custom icon and a glyph is set (URL / calculator / window / command): the shell would hand
+        // back a generic document icon that sits under the glyph and muddies it, so keep the glyph only.
         if (!string.IsNullOrEmpty(Glyph))
         {
             return;

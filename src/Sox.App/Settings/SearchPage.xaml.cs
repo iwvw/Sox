@@ -28,6 +28,7 @@ public sealed partial class SearchPage : Page
         OrFirstToggle.IsOn = _settings.OrFirstPrecedence;
         HistoryToggle.IsOn = _settings.EnableHistory;
         KeywordHistoryToggle.IsOn = _settings.EnableKeywordHistory;
+        AsciiOnlyToggle.IsOn = _settings.AsciiOnlySearchBox;
         ExcludedPathsBox.Text = string.Join(Environment.NewLine, _settings.ExcludedPaths);
         IgnoredGlobsBox.Text = string.Join(Environment.NewLine, _settings.IgnoredPathGlobs);
         IgnoredRegexBox.Text = string.Join(Environment.NewLine, _settings.IgnoredPathRegexes);
@@ -66,6 +67,13 @@ public sealed partial class SearchPage : Page
     {
         if (_loading) return;
         _settings.EnableKeywordHistory = KeywordHistoryToggle.IsOn;
+        Save();
+    }
+
+    private void OnAsciiOnlyToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _settings.AsciiOnlySearchBox = AsciiOnlyToggle.IsOn;
         Save();
     }
 

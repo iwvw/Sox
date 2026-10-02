@@ -4,7 +4,7 @@
        so a project that sets its own Version (the Lertaro-derived Core/Service/PluginSdk snapshots)
        keeps it; only projects without one (Sox.App) inherit this. CI overrides with -p:Version. -->
   <PropertyGroup>
-    <SoxVersion Condition="'$(SoxVersion)' == ''">0.2.1</SoxVersion>
+    <SoxVersion Condition="'$(SoxVersion)' == ''">0.2.2</SoxVersion>
     <VersionPrefix Condition="'$(VersionPrefix)' == ''">$(SoxVersion)</VersionPrefix>
     <Version Condition="'$(Version)' == ''">$(VersionPrefix)</Version>
     <Product>Sox</Product>

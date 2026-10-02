@@ -3,6 +3,8 @@ using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Sox.App.Services;
 using Sox.Core;
 
 namespace Sox.App.Settings;
@@ -18,7 +20,7 @@ public sealed partial class WebSearchPage : Page
         InitializeComponent();
 
         foreach (var engine in _settings.WebSearchEngines)
-            _rows.Add(new EngineRow(engine));
+            _rows.Add(new EngineRow(engine, DispatcherQueue));
 
         EngineList.ItemsSource = _rows;
     }
@@ -38,7 +40,7 @@ public sealed partial class WebSearchPage : Page
         if (await EditEngineAsync(draft, isNew: true))
         {
             _settings.WebSearchEngines.Add(draft);
-            _rows.Add(new EngineRow(draft));
+            _rows.Add(new EngineRow(draft, DispatcherQueue));
             Save();
         }
     }
@@ -71,15 +73,82 @@ public sealed partial class WebSearchPage : Page
         var name = new TextBox { Header = "标题", Text = engine.Name };
         var url = new TextBox { Header = "搜索地址（用 %s 代表关键词）", Text = engine.UrlTemplate };
         var suggest = new TextBox { Header = "建议接口（可选，用 %s 代表关键词）", Text = engine.SuggestUrl };
-        var icon = new TextBox { Header = "图标文件路径（可选，留空用内置图标）", Text = engine.IconPath };
-        var glyph = new TextBox { Header = "内置图标字形（可选）", Text = engine.Glyph };
 
-        var panel = new StackPanel { Spacing = 10, Width = 460 };
+        var icon = new TextBox
+        {
+            Header = "图标（可选）",
+            PlaceholderText = "Iconify 名称，如 logos:google-icon",
+            Text = engine.IconPath,
+        };
+        var iconHint = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        };
+        iconHint.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+        {
+            Text = "可填 Iconify 图标名（如 logos:github-icon、mdi:web）、图片 URL，或本地文件路径。留空使用内置字形。图标库：",
+        });
+        var browseIcons = new Microsoft.UI.Xaml.Documents.Hyperlink();
+        browseIcons.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = "iconify.design" });
+        browseIcons.Click += async (_, _) =>
+        {
+            try
+            {
+                await Windows.System.Launcher.LaunchUriAsync(new Uri("https://iconify.design/"));
+            }
+            catch
+            {
+                // Ignore launch failures; the link is a convenience.
+            }
+        };
+        iconHint.Inlines.Add(browseIcons);
+
+        var preview = new Image { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center };
+        var previewHost = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        previewHost.Children.Add(preview);
+        previewHost.Children.Add(new TextBlock
+        {
+            Text = "预览",
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        });
+
+        void RefreshPreview()
+        {
+            preview.Source = null;
+            var spec = icon.Text.Trim();
+            if (spec.Length == 0)
+            {
+                return;
+            }
+
+            var cached = IconLoader.Get(spec, DispatcherQueue, image => preview.Source = image, 24);
+            if (cached is not null)
+            {
+                preview.Source = cached;
+            }
+        }
+
+        icon.TextChanged += (_, _) => RefreshPreview();
+        RefreshPreview();
+
+        var glyph = new TextBox
+        {
+            Header = "内置图标字形（可选）",
+            PlaceholderText = "留空用默认字形；图标留空时才显示",
+            Text = engine.Glyph,
+        };
+
+        var panel = new StackPanel { Spacing = 10, Width = 480 };
         panel.Children.Add(keyword);
         panel.Children.Add(name);
         panel.Children.Add(url);
         panel.Children.Add(suggest);
         panel.Children.Add(icon);
+        panel.Children.Add(iconHint);
+        panel.Children.Add(previewHost);
         panel.Children.Add(glyph);
 
         var dialog = new ContentDialog
@@ -126,7 +195,13 @@ public sealed partial class WebSearchPage : Page
     /// <summary>Row view-model over a stored engine so the list binds and refreshes cleanly.</summary>
     public sealed class EngineRow : INotifyPropertyChanged
     {
-        public EngineRow(WebSearchEngineSetting model) => Model = model;
+        private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher;
+
+        public EngineRow(WebSearchEngineSetting model, Microsoft.UI.Dispatching.DispatcherQueue dispatcher)
+        {
+            Model = model;
+            _dispatcher = dispatcher;
+        }
 
         public WebSearchEngineSetting Model { get; }
 
@@ -138,7 +213,23 @@ public sealed partial class WebSearchPage : Page
 
         public string Keyword => Model.Keyword;
         public string Name => Model.Name;
-        public string IconLabel => string.IsNullOrWhiteSpace(Model.IconPath) ? "内置" : "自定义";
+
+        public string IconLabel => string.IsNullOrWhiteSpace(Model.IconPath) ? "内置" : Model.IconPath;
+
+        /// <summary>Resolved preview for the row, or null while loading / when the spec is empty.</summary>
+        public ImageSource? IconPreview
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(Model.IconPath))
+                {
+                    return null;
+                }
+
+                return IconLoader.Get(Model.IconPath, _dispatcher, _ =>
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconPreview))), 18);
+            }
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -148,6 +239,7 @@ public sealed partial class WebSearchPage : Page
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Keyword)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconPreview)));
         }
     }
 }

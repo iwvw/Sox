@@ -5,8 +5,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="24,20,24,24">
-        <StackPanel MaxWidth="1000" Spacing="4">
+    <Page.Resources>
+        <!--  ListViewItem adds its own horizontal padding/margin, which shifted each row relative to the
+              sibling header. Zero it so both use only the template's own 12px padding.  -->
+        <Style x:Key="PriorityRowStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer Padding="24,20,24,24" HorizontalContentAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Stretch" Spacing="4">
 
             <controls:SettingsCard x:Name="IndexStateCard" Description="索引状态与进度" Header="本地盘索引">
                 <TextBlock x:Name="IndexStateText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -24,56 +35,69 @@
                 <Button Click="OnClearLog" Content="清空日志" />
             </controls:SettingsCard>
 
-            <controls:SettingsExpander Description="按目录调整搜索结果的排序与取舍" Header="优先级" IsExpanded="True">
-                <controls:SettingsExpander.Items>
-                    <controls:SettingsCard Header="目录规则">
-                        <StackPanel Spacing="8">
-                            <ListView
-                                x:Name="PriorityList"
-                                MinWidth="560"
-                                MaxHeight="260"
-                                SelectionMode="Single"
-                                DoubleTapped="OnEditPriority">
-                                <ListView.Header>
-                                    <Grid Padding="12,6" ColumnSpacing="12">
+            <!--  Priority rules. Built as a plain card rather than a SettingsCard/Expander: those lay
+                  their content out in a right-hand column next to the header, which cramped and
+                  right-shifted the table. A plain Border gives the table the full card width.  -->
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+                <StackPanel>
+                    <StackPanel Padding="16,16,16,8">
+                        <TextBlock Text="优先级" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="按目录调整搜索结果的排序与取舍" />
+                    </StackPanel>
+
+                    <StackPanel Padding="16,0,16,16" Spacing="8">
+                        <!--  Header is a sibling of the list and shares the row template's column
+                              definitions and padding, so the two line up exactly.  -->
+                        <Grid Padding="12,6" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="目录" />
+                            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="优先级" />
+                        </Grid>
+                        <ListView
+                            x:Name="PriorityList"
+                            MaxHeight="260"
+                            ItemContainerStyle="{StaticResource PriorityRowStyle}"
+                            SelectionMode="Single"
+                            DoubleTapped="OnEditPriority">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="12,4" ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="120" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="目录" />
-                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="优先级" />
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            VerticalAlignment="Center"
+                                            Text="{Binding Path}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding PriorityLabel}" />
                                     </Grid>
-                                </ListView.Header>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Padding="12,4" ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="100" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Grid.Column="0"
-                                                VerticalAlignment="Center"
-                                                Text="{Binding Path}"
-                                                TextTrimming="CharacterEllipsis" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding PriorityLabel}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Click="OnAddPriority" Content="添加" />
-                                <Button Click="OnEditPriority" Content="编辑" />
-                                <Button Click="OnDeletePriority" Content="删除" />
-                            </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Click="OnAddPriority" Content="添加" />
+                            <Button Click="OnEditPriority" Content="编辑" />
+                            <Button Click="OnDeletePriority" Content="删除" />
                         </StackPanel>
-                    </controls:SettingsCard>
-                </controls:SettingsExpander.Items>
-            </controls:SettingsExpander>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

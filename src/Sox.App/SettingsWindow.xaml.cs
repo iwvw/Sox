@@ -18,6 +18,16 @@ public sealed partial class SettingsWindow : WindowEx
     private Microsoft.UI.Xaml.Media.SystemBackdrop? _windowBackdrop;
 
     public SettingsWindow(ThemeService themeService, SearchHost searchHost, AppUpdateService updates, Action exitForUpdate)
+        : this(themeService, searchHost, updates, exitForUpdate, initialTag: null)
+    {
+    }
+
+    public SettingsWindow(
+        ThemeService themeService,
+        SearchHost searchHost,
+        AppUpdateService updates,
+        Action exitForUpdate,
+        string? initialTag)
     {
         _themeService = themeService;
         _searchHost = searchHost;
@@ -55,11 +65,22 @@ public sealed partial class SettingsWindow : WindowEx
             Log.Error("SettingsWindow init failed", ex);
         }
 
-        NavView.SelectedItem = NavView.MenuItems[0];
+        NavigateTo(initialTag ?? "general");
 
         // Open centred on screen (WinUIEx handles the monitor/DPI maths); without this it lands wherever
         // the OS default places a new window.
         WinUIEx.WindowExtensions.CenterOnScreen(this);
+    }
+
+    /// <summary>Selects the navigation item with the given tag, opening that page. No-op for an unknown
+    /// tag (falls back to the first item).</summary>
+    public void NavigateTo(string tag)
+    {
+        var item = NavView.MenuItems
+            .OfType<Microsoft.UI.Xaml.Controls.NavigationViewItem>()
+            .FirstOrDefault(i => string.Equals(i.Tag as string, tag, StringComparison.OrdinalIgnoreCase));
+
+        NavView.SelectedItem = item ?? NavView.MenuItems[0];
     }
 
     private void OnThemeChanged(object? sender, EventArgs e) =>
@@ -108,7 +129,7 @@ public sealed partial class SettingsWindow : WindowEx
                 "appearance" => CreateAppearancePage(),
                 "hotkeys" => new HotkeyPage(),
                 "search" => new SearchPage(),
-                "index" => new IndexPage(_searchHost),
+                "index" => new IndexPage(_searchHost, this),
                 "websearch" => new WebSearchPage(),
                 "about" => new AboutPage(_updates, _exitForUpdate),
                 _ => null,

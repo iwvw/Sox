@@ -5,8 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="24,20,24,24">
-        <StackPanel MaxWidth="1000" Spacing="4">
+    <ScrollViewer Padding="24,20,24,24" HorizontalContentAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Stretch" Spacing="4">
 
             <controls:SettingsCard Description="在输入框内按下组合键即可录制，Backspace 清空；至少含一个修饰键" Header="呼出搜索框">
                 <TextBox

@@ -6,6 +6,8 @@
     xmlns:winuiex="using:WinUIEx"
     Width="900"
     Height="700"
+    MinWidth="760"
+    MinHeight="560"
     Title="Sox 设置">
 
     <Grid x:Name="RootElement">

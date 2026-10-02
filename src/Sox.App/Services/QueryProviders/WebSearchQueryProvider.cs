@@ -31,7 +31,11 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
 
     public IReadOnlyList<QueryScope> Scopes =>
         Engines.Where(e => e.Enabled && !string.IsNullOrWhiteSpace(e.Keyword))
-            .Select(e => new QueryScope(e.Keyword, e.Name, e.Glyph))
+            .Select(e => new QueryScope(
+                e.Keyword,
+                e.Name,
+                e.Glyph,
+                string.IsNullOrWhiteSpace(e.IconPath) ? null : e.IconPath))
             .ToList();
 
     public IEnumerable<InstantResult> Query(string query)

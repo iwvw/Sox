@@ -5,8 +5,20 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
+    <Page.Resources>
+        <!--  ListViewItem adds its own horizontal padding/margin, which shifted each row relative to the
+              sibling header. Zero it so both use only the template's own 12px padding.  -->
+        <Style x:Key="EngineRowStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Page.Resources>
+
     <Grid Padding="24,20,24,24" RowSpacing="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -18,35 +30,41 @@
             Text="输入关键字加空格进入对应搜索引擎，例如 g 你好。双击行可编辑。"
             TextWrapping="Wrap" />
 
+        <!--  Header is a sibling of the list (not ListView.Header) and shares the same column
+              definitions and padding as the row template, so the two line up exactly. Both stretch to
+              the page width and the title column takes the remaining space, so the table fills the
+              window instead of sitting at a fixed 1000px on the left.  -->
+        <Grid
+            Grid.Row="1"
+            Padding="12,6"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" MinWidth="160" />
+                <ColumnDefinition Width="280" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="启用" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="关键字" />
+            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="标题" />
+            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="图标" />
+        </Grid>
+
         <ListView
             x:Name="EngineList"
-            Grid.Row="1"
-            MaxWidth="1000"
-            HorizontalAlignment="Left"
+            Grid.Row="2"
+            Padding="0"
+            ItemContainerStyle="{StaticResource EngineRowStyle}"
             SelectionMode="Single"
             DoubleTapped="OnEditEngine">
-            <ListView.Header>
-                <Grid Padding="12,6" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="40" />
-                        <ColumnDefinition Width="120" />
-                        <ColumnDefinition Width="220" />
-                        <ColumnDefinition Width="120" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="启用" />
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="关键字" />
-                    <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="标题" />
-                    <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="图标" />
-                </Grid>
-            </ListView.Header>
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <Grid Padding="12,6" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" MinWidth="160" />
+                            <ColumnDefinition Width="280" />
                         </Grid.ColumnDefinitions>
                         <CheckBox
                             Grid.Column="0"
@@ -54,19 +72,33 @@
                             Checked="OnRowToggled"
                             Unchecked="OnRowToggled" />
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Keyword}" />
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding Name}" />
                         <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Text="{Binding Name}"
+                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel
                             Grid.Column="3"
                             VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{Binding IconLabel}" />
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Image
+                                Width="18"
+                                Height="18"
+                                Source="{Binding IconPreview}" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{Binding IconLabel}"
+                                TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
 
         <StackPanel
-            Grid.Row="2"
+            Grid.Row="3"
             Orientation="Horizontal"
             Spacing="8">
             <Button Click="OnAddEngine" Content="添加" />
