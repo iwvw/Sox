@@ -60,6 +60,8 @@ internal sealed class ApplicationQueryProvider : IQueryProvider, IDisposable
                 }
             }
 
+            AppendAppsFolderApps(entries, seenTitles);
+
             lock (_gate)
             {
                 _entries = entries;
@@ -72,6 +74,39 @@ internal sealed class ApplicationQueryProvider : IQueryProvider, IDisposable
         finally
         {
             _loaded = true;
+        }
+    }
+
+    // Modern packaged (UWP/MSIX) apps -- Notepad, Calculator, Terminal -- have no .lnk on disk, so the
+    // Start Menu scan above misses them. shell:AppsFolder mirrors both packaged and classic apps, so
+    // dedupe by display name against what was already indexed; only genuinely-new names survive.
+    private static void AppendAppsFolderApps(List<Entry> entries, HashSet<string> seenTitles)
+    {
+        List<AppsFolderEnumerator.AppEntry> apps;
+        try
+        {
+            apps = AppsFolderEnumerator.Enumerate();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning($"AppsFolder app enumeration failed: {ex.Message}");
+            return;
+        }
+
+        foreach (var app in apps)
+        {
+            if (string.IsNullOrWhiteSpace(app.Name) || !seenTitles.Add(app.Name))
+            {
+                continue;
+            }
+
+            var aumid = app.Aumid;
+
+            // A classic entry can expose a real file path instead of an AUMID; launch it directly.
+            var looksLikePath = aumid.Length > 2 && aumid[1] == ':';
+            var launchTarget = looksLikePath ? aumid : $"shell:AppsFolder\\{aumid}";
+            var iconPath = looksLikePath ? aumid : launchTarget;
+            entries.Add(new Entry(app.Name, launchTarget, iconPath));
         }
     }
 

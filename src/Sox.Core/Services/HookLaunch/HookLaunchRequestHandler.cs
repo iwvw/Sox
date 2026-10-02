@@ -66,10 +66,24 @@ internal static class HookLaunchRequestHandler
                 return false;
 
             var servicePath = Process.GetCurrentProcess().MainModule?.FileName;
-            var serviceDir = string.IsNullOrEmpty(servicePath) ? null : Path.GetDirectoryName(Path.GetFullPath(servicePath));
+            if (string.IsNullOrEmpty(servicePath))
+                return false;
+
+            var serviceDir = Path.GetDirectoryName(Path.GetFullPath(servicePath));
             var callerDir = Path.GetDirectoryName(Path.GetFullPath(callerPath));
-            return serviceDir != null && callerDir != null &&
-                string.Equals(serviceDir, callerDir, StringComparison.OrdinalIgnoreCase);
+            if (serviceDir == null || callerDir == null)
+                return false;
+
+            // Accept both shipped layouts: the App sits in the install root while the service lives in
+            // its Service\ subfolder, so the App directory is the service directory's PARENT. The dev
+            // build puts both in the same directory. Requiring exact equality (the old check) rejected
+            // every real install, so the hook was never launched outside a hand-built dev tree.
+            if (string.Equals(callerDir, serviceDir, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var parentOfService = Path.GetDirectoryName(serviceDir);
+            return parentOfService != null
+                && string.Equals(callerDir, parentOfService, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {

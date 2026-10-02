@@ -178,8 +178,25 @@ internal static class ShellIconProvider
         }
     }
 
+    // A shell namespace token ("shell:AppsFolder\{AUMID}", "::{CLSID}") has no filesystem path, so
+    // File.Exists/Directory.Exists are false and the USEFILEATTRIBUTES fallback below would return a
+    // generic document icon. The shell can still parse the token, so route it through the same
+    // IShellItemImageFactory path a real file uses -- which is what gives a packaged app its own icon.
+    private static bool IsVirtualShellPath(string path) =>
+        path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("::", StringComparison.Ordinal);
+
     private static Bitmap? LoadHighQuality(string path, bool isDir, int pixelSize)
     {
+        if (IsVirtualShellPath(path))
+        {
+            var virtualIcon = TryShellItemImage(path, pixelSize, iconOnly: true);
+            if (virtualIcon is not null)
+            {
+                return virtualIcon;
+            }
+        }
+
         var exists = File.Exists(path) || Directory.Exists(path);
         if (exists && !isDir && ThumbnailExtensions.Contains(Path.GetExtension(path)))
         {

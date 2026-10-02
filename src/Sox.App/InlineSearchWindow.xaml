@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<winuiex:WindowEx
+    x:Class="Sox.App.InlineSearchWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Sox.App.Controls"
+    xmlns:winuiex="using:WinUIEx">
+
+    <controls:CardControl x:Name="RootCard" ShadowPadding="0" ShowShadow="False">
+        <controls:CardControl.MainContent>
+            <StackPanel x:Name="RootContent">
+                <!--  Search row, mirroring the spotlight: icon + flat box + trailing actions.  -->
+                <Grid
+                    Height="40"
+                    Padding="12,0,8,0"
+                    ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <FontIcon
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        FontSize="14"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE721;" />
+
+                    <TextBox
+                        x:Name="SearchBox"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="14"
+                        PlaceholderText="在此目录中搜索，回车跳转"
+                        Style="{StaticResource SoxSearchBoxStyle}"
+                        TextChanged="SearchBox_TextChanged" />
+
+                    <Button
+                        x:Name="FavoriteButton"
+                        Grid.Column="2"
+                        Width="26"
+                        Height="26"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="收藏">
+                        <FontIcon FontSize="13" Glyph="&#xE734;" />
+                    </Button>
+
+                    <Button
+                        x:Name="HistoryButton"
+                        Grid.Column="3"
+                        Width="26"
+                        Height="26"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="历史">
+                        <FontIcon FontSize="13" Glyph="&#xE81C;" />
+                    </Button>
+
+                    <Button
+                        x:Name="ToolsButton"
+                        Grid.Column="4"
+                        Width="26"
+                        Height="26"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="工具">
+                        <FontIcon FontSize="13" Glyph="&#xE712;" />
+                    </Button>
+                </Grid>
+
+                <Border
+                    x:Name="ResultsDivider"
+                    BorderBrush="{ThemeResource Sox.DividerBrush}"
+                    BorderThickness="0,1,0,0"
+                    Visibility="Collapsed" />
+
+                <ListView
+                    x:Name="ResultList"
+                    MaxHeight="336"
+                    Padding="2,4"
+                    IsItemClickEnabled="True"
+                    ItemClick="ResultList_ItemClick"
+                    ItemContainerStyle="{StaticResource ResultItemContainerStyle}"
+                    ItemTemplate="{StaticResource ResultItemTemplate}"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollMode="Enabled"
+                    SelectionMode="Single"
+                    Visibility="Collapsed" />
+            </StackPanel>
+        </controls:CardControl.MainContent>
+    </controls:CardControl>
+</winuiex:WindowEx>

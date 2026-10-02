@@ -24,13 +24,6 @@
                 <ToggleSwitch x:Name="TrayToggle" Toggled="OnTrayToggled" />
             </controls:SettingsCard>
 
-            <controls:SettingsCard Description="仅当发布仓库为私有需要；公开仓库留空即可" Header="GitHub Token">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PasswordBox x:Name="TokenBox" MinWidth="260" PasswordRevealMode="Peek" />
-                    <Button Click="OnSaveToken" Content="保存" />
-                </StackPanel>
-            </controls:SettingsCard>
-
         </StackPanel>
     </ScrollViewer>
 </Page>

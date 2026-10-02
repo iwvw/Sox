@@ -29,6 +29,35 @@ internal static class ServiceBootstrapper
         }
     }
 
+    /// <summary>Requests the SCM to stop SoxService. Returns true once it reports STOPPED.</summary>
+    public static bool TryStop()
+    {
+        try
+        {
+            var stop = RunSc($"stop {ServiceName}");
+
+            // sc stop returns before the service has actually stopped; poll until SCM reports STOPPED
+            // (or the service is already gone), so the process is really down when this returns.
+            for (var i = 0; i < 20; i++)
+            {
+                if (!QueryRunning())
+                {
+                    return true;
+                }
+
+                Thread.Sleep(250);
+            }
+
+            Log.Warning($"SoxService did not reach STOPPED after {stop.Output.Trim()}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to stop SoxService", ex);
+            return false;
+        }
+    }
+
     private static bool QueryRunning()
     {
         var result = RunSc($"query {ServiceName}");

@@ -13,6 +13,7 @@ internal sealed class TrayIconService : IDisposable
     public event Action? SettingsRequested;
     public event Action? AboutRequested;
     public event Action? ExitRequested;
+    public event Action? ExitAndStopServiceRequested;
 
     public void Show(bool visible)
     {
@@ -53,6 +54,7 @@ internal sealed class TrayIconService : IDisposable
             Wire(menu, 2, () => SettingsRequested?.Invoke());
             Wire(menu, 3, () => AboutRequested?.Invoke());
             Wire(menu, 5, () => ExitRequested?.Invoke());
+            Wire(menu, 6, () => ExitAndStopServiceRequested?.Invoke());
         }
 
         icon.ForceCreate(enablesEfficiencyMode: false);

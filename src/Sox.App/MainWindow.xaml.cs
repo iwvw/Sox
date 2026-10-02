@@ -35,6 +35,7 @@ public sealed partial class MainWindow : WindowEx
     private readonly HotkeyService _hotkeys;
     private readonly ImeController _ime;
     private readonly AppUpdateService _updates = new();
+    private readonly Sox.Core.Hook.Ipc.HookIpcClient _hookIpc = new();
 
     public MainWindow(ThemeService themeService)
     {
@@ -88,6 +89,70 @@ public sealed partial class MainWindow : WindowEx
 
         _ = InitializeAsync();
         _ = AutoCheckUpdatesAsync();
+
+        // Start the file-dialog integration: connects to the hook process (launched on demand via the
+        // service) that owns the global keyboard/mouse hooks and Explorer/dialog tracking. Quick Switch
+        // (Ctrl+G inside a file dialog) runs entirely inside that hook process, so starting it is all
+        // this side needs for the feature to work.
+        StartHookIntegration();
+    }
+
+    private void StartHookIntegration()
+    {
+        try
+        {
+            _hookIpc.OnError += message => Log.Warning($"Hook IPC: {message}");
+            _hookIpc.OnExplorerActivated += OnExplorerActivated;
+            _hookIpc.OnPathCaptured += OnPathCaptured;
+            _hookIpc.Start();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to start hook integration", ex);
+        }
+    }
+
+    private InlineSearchWindow? _inlineWindow;
+
+    // A dialog (or Explorer window) became the active window. Only a common file dialog (#32770) gets the
+    // docked panel; a plain Explorer window is served by the user's own navigation, not by us.
+    private void OnExplorerActivated(IntPtr hwnd, string title, string className, bool isDesktop)
+    {
+        if (string.Equals(className, "#32770", StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingDialogHwnd = hwnd;
+        }
+        else
+        {
+            _pendingDialogHwnd = IntPtr.Zero;
+        }
+    }
+
+    private IntPtr _pendingDialogHwnd;
+
+    // The dialog's current folder, captured right after activation. This is what the panel searches in
+    // and shows as its header.
+    private void OnPathCaptured(string path, bool isDesktop, bool isDialog)
+    {
+        if (!isDialog || _pendingDialogHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var hwnd = _pendingDialogHwnd;
+        var folder = path;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                _inlineWindow ??= new InlineSearchWindow(_searchHost, _hookIpc, _themeService);
+                _inlineWindow.ShowForDialog(hwnd, folder);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Inline: ShowForDialog failed", ex);
+            }
+        });
     }
 
     /// <summary>Silent background update check on startup, honouring AutoCheckUpdates. Only caches the
@@ -482,6 +547,7 @@ public sealed partial class MainWindow : WindowEx
         _tray.SettingsRequested += () => DispatcherQueue.TryEnqueue(() => OpenSettings());
         _tray.AboutRequested += () => DispatcherQueue.TryEnqueue(ShowAbout);
         _tray.ExitRequested += () => DispatcherQueue.TryEnqueue(ExitApp);
+        _tray.ExitAndStopServiceRequested += () => DispatcherQueue.TryEnqueue(ExitAppAndStopService);
 
         var hide = Sox.Core.UserSettings.Load().HideTrayIcon;
         _tray.Show(!hide);
@@ -541,6 +607,16 @@ public sealed partial class MainWindow : WindowEx
     private void ExitApp()
     {
         _tray.Dispose();
+        Application.Current.Exit();
+    }
+
+    /// <summary>Exit like <see cref="ExitApp"/> but also stop the Windows service first, so no Sox
+    /// process is left behind. Stopping on the UI thread would block on the SCM poll, so it runs on a
+    /// background thread and the app exits once the service reports STOPPED.</summary>
+    private async void ExitAppAndStopService()
+    {
+        _tray.Dispose();
+        await Task.Run(() => ServiceBootstrapper.TryStop());
         Application.Current.Exit();
     }
 
@@ -610,8 +686,23 @@ public sealed partial class MainWindow : WindowEx
         var pointer = System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(_wndProc);
         _originalWndProc = NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_WNDPROC, pointer);
 
-        _hotkeys.Pressed += () => DispatcherQueue.TryEnqueue(ToggleWindow);
+        _hotkeys.Pressed += () => DispatcherQueue.TryEnqueue(OnSummonHotkeyPressed);
         ApplySummonHotkey(UserSettings.Load().SummonHotkey);
+    }
+
+    // Ignore the summon while a fullscreen app owns the foreground, when the user opted into that, so
+    // the spotlight never pops over a game. Toggling an already-visible window is always allowed (the
+    // user clearly wants it gone); only the "show" direction is suppressed.
+    private void OnSummonHotkeyPressed()
+    {
+        if (!IsVisibleToUser()
+            && UserSettings.Load().DisableHotkeyInFullscreen
+            && FullscreenDetector.IsForegroundFullscreen())
+        {
+            return;
+        }
+
+        ToggleWindow();
     }
 
     /// <summary>Binds (or re-binds) the summon hotkey from settings. Called at startup and whenever the
@@ -1998,6 +2089,7 @@ public sealed partial class MainWindow : WindowEx
             _queryProviders.SuggestionsUpdated -= OnSuggestionsUpdated;
             _queryProviders.Dispose();
             _activationServer.Dispose();
+            _hookIpc.Dispose();
             _hotkeys.Dispose();
             _everythingIpc.Dispose();
             _searchHost.Dispose();

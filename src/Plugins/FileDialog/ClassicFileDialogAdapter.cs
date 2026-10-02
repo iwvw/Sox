@@ -85,31 +85,28 @@ public class ClassicFileDialogAdapter : IFileDialogAdapter
             Task.Run(async () =>
             {
                 await Task.Delay(300);
-                var currentActive = GetForegroundWindow();
-                var isAllowed = (currentActive == hwnd);
 
-                if (isAllowed)
+                // Commit unconditionally; see StandardFileDialogAdapter.NavigateTo for why the old
+                // "only while the dialog is foreground" gate made this a race.
+                var targetThread = GetWindowThreadProcessId(targetEdit, out var _);
+                var currentThread = GetCurrentThreadId();
+                var attached = false;
+                try
                 {
-                    var targetThread = GetWindowThreadProcessId(targetEdit, out var _);
-                    var currentThread = GetCurrentThreadId();
-                    var attached = false;
-                    try
-                    {
-                        if (targetThread != 0 && targetThread != currentThread)
-                            attached = AttachThreadInput(currentThread, targetThread, true);
+                    if (targetThread != 0 && targetThread != currentThread)
+                        attached = AttachThreadInput(currentThread, targetThread, true);
 
-                        SetForegroundWindow(hwnd);
-                        SetFocus(targetEdit);
-                        PostMessage(targetEdit, WM_KEYDOWN, (IntPtr)VK_RETURN, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_KEYUP, (IntPtr)VK_RETURN, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_LBUTTONDOWN, (IntPtr)1, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
-                        PostMessage(targetEdit, EM_SETSEL, IntPtr.Zero, (IntPtr)(-1));
-                    }
-                    finally
-                    {
-                        if (attached) AttachThreadInput(currentThread, targetThread, false);
-                    }
+                    SetForegroundWindow(hwnd);
+                    SetFocus(targetEdit);
+                    PostMessage(targetEdit, WM_KEYDOWN, (IntPtr)VK_RETURN, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_KEYUP, (IntPtr)VK_RETURN, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_LBUTTONDOWN, (IntPtr)1, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                    PostMessage(targetEdit, EM_SETSEL, IntPtr.Zero, (IntPtr)(-1));
+                }
+                finally
+                {
+                    if (attached) AttachThreadInput(currentThread, targetThread, false);
                 }
             });
             return true;

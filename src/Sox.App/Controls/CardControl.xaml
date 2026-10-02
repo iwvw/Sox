@@ -22,7 +22,6 @@
             BorderBrush="{ThemeResource Sox.CardStrokeBrush}"
             BorderThickness="1"
             CornerRadius="{x:Bind CardCornerRadius, Mode=OneWay}"
-            Shadow="{StaticResource CardShadow}"
             Translation="0,0,32">
             <Grid x:Name="CardContent">
                 <controls:SystemBackdropElement x:Name="BackdropElement" CornerRadius="{x:Bind CardCornerRadius, Mode=OneWay}" />

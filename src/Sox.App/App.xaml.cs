@@ -20,6 +20,7 @@ public partial class App : Application
     {
         InitializeComponent();
         Core.Logger.Initialize("app.log", Core.Logger.UserDataDir);
+        CoreAliasBootstrap.Initialize();
         ThemeService = new ThemeService();
     }
 

@@ -16,10 +16,34 @@
   <ItemGroup>
     <ProjectReference Include="..\Sox.Core\Core.csproj" />
     <ProjectReference Include="..\Sox.PluginSdk\PluginSdk.csproj" />
+    <!-- Plugins are loaded from Plugins\ beside the exe at runtime (ServicePluginLoader scans that
+         directory in both the service and the hook process). Referencing them here is what makes
+         them build and ship; ReferenceOutputAssembly=false keeps them out of the compile graph. -->
+    <ProjectReference Include="..\Plugins\PinyinAlias\PinyinAlias.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Plugins\FileDialog\FileDialog.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
   </ItemGroup>
+
+  <!-- Copy each plugin DLL into Plugins\ beside the service exe (build) and into Plugins\ under the
+       publish dir (publish), so the hook process can discover them. The plugins' own PostBuild targets
+       point at stale paths and are not relied on here. -->
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_PluginDll Include="..\Plugins\PinyinAlias\bin\$(Configuration)\net10.0-windows\Sox.Plugins.PinyinAlias.dll" />
+      <_PluginDll Include="..\Plugins\FileDialog\bin\$(Configuration)\net10.0-windows\Sox.Plugins.FileDialog.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PluginDll)" DestinationFolder="$(OutDir)Plugins\" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyPluginsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_PluginDllPublish Include="..\Plugins\PinyinAlias\bin\$(Configuration)\net10.0-windows\Sox.Plugins.PinyinAlias.dll" />
+      <_PluginDllPublish Include="..\Plugins\FileDialog\bin\$(Configuration)\net10.0-windows\Sox.Plugins.FileDialog.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PluginDllPublish)" DestinationFolder="$(PublishDir)Plugins\" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

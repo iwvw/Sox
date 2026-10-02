@@ -38,6 +38,11 @@
                         <FontIcon FontSize="14" Glyph="&#xE7E8;" />
                     </MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem FontSize="13" Text="退出并停止服务">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon FontSize="14" Glyph="&#xE71A;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
             </MenuFlyout>
         </tb:TaskbarIcon.ContextFlyout>
     </tb:TaskbarIcon>

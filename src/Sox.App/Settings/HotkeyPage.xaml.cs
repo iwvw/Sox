@@ -18,6 +18,14 @@ public sealed partial class HotkeyPage : Page
         _settings = UserSettings.Load();
         InitializeComponent();
         SummonHotkeyBox.Text = _settings.SummonHotkey;
+        FullscreenToggle.IsOn = _settings.DisableHotkeyInFullscreen;
+    }
+
+    private void OnFullscreenToggled(object sender, RoutedEventArgs e)
+    {
+        _settings.DisableHotkeyInFullscreen = FullscreenToggle.IsOn;
+        _settings.Save();
+        (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
     }
 
     private void OnSummonHotkeyKeyDown(object sender, KeyRoutedEventArgs e)

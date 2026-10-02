@@ -55,6 +55,10 @@ Sox：Windows 原生文件搜索工具。后端复用 Lertaro 核心（USN/MFT �
 | 优先级 | 按目录给搜索结果分层（高/正常/不常用/不索引），`PathPriorityResolver` 前缀匹配，High/Uncommon 转行为分加成、Excluded 硬过滤（ADR-0021） |
 | 自更新 | App 侧 `AppUpdateService` 查 GitHub Releases、下载匹配形态的产物、生成 cmd 脚本在退出后覆盖并重启（ADR-0021） |
 | 呼出热键 | `UserSettings.SummonHotkey`（默认 Alt+Space），`HotkeyService` 注册，设置页改动实时重注册 |
+| 内嵌面板（InlineSearchWindow） | 吸附在文件对话框下方的独立 WinUI 窗：空查询列已打开的 Explorer 目录，有查询走全局搜索，选中跳转对话框目录（ADR-0022） |
+| Quick Switch | 文件对话框内 Ctrl+G 跳回最近激活的资源管理器目录，手势与导航全在 hook 进程内完成（ADR-0022） |
+| owned window | 内嵌面板与文件对话框的关系：`GWLP_HWNDPARENT` 使面板只跟随并浮于该对话框之上，替代 WS_EX_TOPMOST |
+| AUMID | 打包（UWP/MSIX）应用的 AppUserModelID；`shell:AppsFolder\{AUMID}` 为其启动路径，无 `.lnk`，由 `AppsFolderEnumerator` 枚举 |
 
 ## 关键数值（设计目标）
 

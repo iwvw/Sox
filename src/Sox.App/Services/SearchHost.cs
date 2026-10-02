@@ -69,7 +69,8 @@ namespace Sox.App.Services;
         Action<IReadOnlyList<SearchResult>> onUpdate,
         Action? onLocalSearchFailed = null,
         int? maxResults = null,
-        int throttleMs = 25)
+        int throttleMs = 25,
+        string? directoryFilter = null)
     {
         var max = maxResults ?? ResolveMaxResults();
 
@@ -132,7 +133,7 @@ namespace Sox.App.Services;
                 stripped,
                 max,
                 0,
-                null,
+                directoryFilter,
                 result =>
                 {
                     if (bag.TryAdd(result.Path, result))
@@ -210,6 +211,17 @@ namespace Sox.App.Services;
         foreach (var entry in entries)
         {
             if (string.IsNullOrWhiteSpace(entry.Path))
+            {
+                continue;
+            }
+
+            // Application entries are not files: their path is a shell token like
+            // "shell:AppsFolder\{AUMID}". Injecting one here made a bogus FILE row whose title was the raw
+            // AUMID (Path.GetFileName) and whose subtitle was "shell:AppsFolder" -- and it matched
+            // "wows" only because those letters are a subsequence of "Windows". The real app row is
+            // produced by ApplicationQueryProvider, and its history boost still applies through the
+            // priority cache used by the ranking comparer, so nothing is lost by skipping it here.
+            if (entry.Kind == HistoryEntryKind.Application)
             {
                 continue;
             }

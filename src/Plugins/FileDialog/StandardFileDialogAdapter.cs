@@ -112,31 +112,32 @@ public class StandardFileDialogAdapter : IFileDialogAdapter
             Task.Run(async () =>
             {
                 await Task.Delay(300);
-                var currentActive = GetForegroundWindow();
-                var isAllowed = (currentActive == hwnd);
 
-                if (isAllowed)
+                // Commit unconditionally. The previous foreground check (only press Enter while the dialog
+                // was the active window) made navigation a race: the caller's panel is often still the
+                // foreground window 300ms later, so the Enter was skipped and the path just sat in the box
+                // until a later click happened to win. PostMessage delivers the key to the dialog's own
+                // thread whatever is in front, which is exactly what is wanted once the user has picked a
+                // target.
+                var targetThread = GetWindowThreadProcessId(targetEdit, out var _);
+                var currentThread = GetCurrentThreadId();
+                var attached = false;
+                try
                 {
-                    var targetThread = GetWindowThreadProcessId(targetEdit, out var _);
-                    var currentThread = GetCurrentThreadId();
-                    var attached = false;
-                    try
-                    {
-                        if (targetThread != 0 && targetThread != currentThread)
-                            attached = AttachThreadInput(currentThread, targetThread, true);
+                    if (targetThread != 0 && targetThread != currentThread)
+                        attached = AttachThreadInput(currentThread, targetThread, true);
 
-                        SetForegroundWindow(hwnd);
-                        SetFocus(targetEdit);
-                        PostMessage(targetEdit, WM_KEYDOWN, (IntPtr)VK_RETURN, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_KEYUP, (IntPtr)VK_RETURN, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_LBUTTONDOWN, (IntPtr)1, IntPtr.Zero);
-                        PostMessage(targetEdit, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
-                        PostMessage(targetEdit, EM_SETSEL, IntPtr.Zero, (IntPtr)(-1));
-                    }
-                    finally
-                    {
-                        if (attached) AttachThreadInput(currentThread, targetThread, false);
-                    }
+                    SetForegroundWindow(hwnd);
+                    SetFocus(targetEdit);
+                    PostMessage(targetEdit, WM_KEYDOWN, (IntPtr)VK_RETURN, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_KEYUP, (IntPtr)VK_RETURN, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_LBUTTONDOWN, (IntPtr)1, IntPtr.Zero);
+                    PostMessage(targetEdit, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                    PostMessage(targetEdit, EM_SETSEL, IntPtr.Zero, (IntPtr)(-1));
+                }
+                finally
+                {
+                    if (attached) AttachThreadInput(currentThread, targetThread, false);
                 }
             });
             return true;

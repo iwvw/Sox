@@ -7,6 +7,7 @@ internal static class NativeMethods
     public const int GWL_WNDPROC = -4;
     public const int GWL_STYLE = -16;
     public const int GWL_EXSTYLE = -20;
+    public const int GWLP_HWNDPARENT = -8;
 
     public const int WS_CAPTION = 0x00C00000;
     public const int WS_THICKFRAME = 0x00040000;
@@ -20,6 +21,7 @@ internal static class NativeMethods
     public const uint SW_SHOW = 5;
     public const uint SW_SHOWNA = 8;
     public const uint SW_RESTORE = 9;
+    public const uint SW_SHOWNOACTIVATE = 4;
 
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOMOVE = 0x0002;
@@ -49,6 +51,7 @@ internal static class NativeMethods
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_CLOAK = 13;
     public const int DWMWA_CLOAKED = 14;
+    public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 
     public const int DWMWCP_DEFAULT = 0;
     public const int DWMWCP_DONOTROUND = 1;
@@ -139,6 +142,9 @@ internal static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int pvAttribute, int cbAttribute);
 
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    public static extern int DwmGetWindowAttributeRect(IntPtr hwnd, int attribute, out RECT pvAttribute, int cbAttribute);
+
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(IntPtr hwnd);
 
@@ -175,6 +181,30 @@ internal static class NativeMethods
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    // Round-corner clipping for a borderless window: the DWM backdrop makes the window transparent, but
+    // its non-client frame still draws square corners. Clipping the window region to a rounded rect is
+    // what removes them so the card's own radius is the only edge visible.
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
+
+    [DllImport("user32.dll")]
+    public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr hObject);
 
     // ---- IME (imm32) ----
     // Used to try to force the search box to English input mode while focused. Works for legacy IMM32

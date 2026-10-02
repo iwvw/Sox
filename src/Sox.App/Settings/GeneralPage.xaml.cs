@@ -21,14 +21,7 @@ public sealed partial class GeneralPage : Page
         MinimizeToggle.IsOn = _settings.MinimizeToTrayOnStart;
         AutoUpdateToggle.IsOn = _settings.AutoCheckUpdates;
         TrayToggle.IsOn = !_settings.HideTrayIcon;
-        TokenBox.Password = _settings.GitHubToken;
         _loading = false;
-    }
-
-    private void OnSaveToken(object sender, RoutedEventArgs e)
-    {
-        _settings.GitHubToken = TokenBox.Password.Trim();
-        Save();
     }
 
     private void OnStartupToggled(object sender, RoutedEventArgs e)

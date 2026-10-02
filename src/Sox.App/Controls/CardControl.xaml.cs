@@ -11,6 +11,7 @@ namespace Sox.App.Controls;
 public sealed partial class CardControl : UserControl, IDisposable
 {
     private readonly TintedControllerBackdrop _backdrop = new();
+    private readonly ThemeShadow _cardShadow = new();
     private Color _cardFallbackBackground;
 
     public static readonly DependencyProperty MainContentProperty =
@@ -34,6 +35,13 @@ public sealed partial class CardControl : UserControl, IDisposable
             typeof(CardControl),
             new PropertyMetadata(new CornerRadius(8)));
 
+    public static readonly DependencyProperty ShowShadowProperty =
+        DependencyProperty.Register(
+            nameof(ShowShadow),
+            typeof(bool),
+            typeof(CardControl),
+            new PropertyMetadata(true, OnShowShadowChanged));
+
     public object? MainContent
     {
         get => GetValue(MainContentProperty);
@@ -52,6 +60,20 @@ public sealed partial class CardControl : UserControl, IDisposable
         set => SetValue(CardCornerRadiusProperty, value);
     }
 
+    public bool ShowShadow
+    {
+        get => (bool)GetValue(ShowShadowProperty);
+        set => SetValue(ShowShadowProperty, value);
+    }
+
+    private static void OnShowShadowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is CardControl card)
+        {
+            card.CardBorder.Shadow = (bool)e.NewValue ? card._cardShadow : null;
+        }
+    }
+
     public FrameworkElement CardElement => CardBorder;
 
     public Panel CardContentPanel => CardContent;
@@ -63,6 +85,7 @@ public sealed partial class CardControl : UserControl, IDisposable
         InitializeComponent();
         _backdrop.BackdropAttachmentChanged += OnBackdropAttachmentChanged;
         BackdropElement.SystemBackdrop = _backdrop;
+        CardBorder.Shadow = _cardShadow;
     }
 
     public void SetCardMaxHeight(double maxHeightDip)

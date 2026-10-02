@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sox.App.Services;
+using Sox.Core;
 
 namespace Sox.App.Settings;
 
@@ -10,6 +11,21 @@ public sealed partial class AboutPage : Page
     private readonly Action _exitForUpdate;
     private AppUpdateInfo? _info;
 
+    // Third-party projects Sox builds on. Kept here rather than loaded from a file so the list ships
+    // with the binary and cannot drift from what was actually compiled in.
+    private static readonly OssComponent[] OpenSourceComponents =
+    [
+        new("Lertaro", "MIT", "https://github.com/Lertaro/Lertaro"),
+        new("Windows App SDK (WinUI 3)", "MIT", "https://github.com/microsoft/WindowsAppSDK"),
+        new("CommunityToolkit.WinUI", "MIT", "https://github.com/CommunityToolkit/Windows"),
+        new("WinUIEx", "MIT", "https://github.com/dotMorten/WinUIEx"),
+        new("H.NotifyIcon.WinUI", "MIT", "https://github.com/HavenDV/H.NotifyIcon"),
+        new("Microsoft.Graphics.Win2D", "MIT", "https://github.com/microsoft/Win2D"),
+        new("System.ServiceProcess.ServiceController", "MIT", "https://github.com/dotnet/runtime"),
+    ];
+
+    public sealed record OssComponent(string Name, string License, string Url);
+
     public AboutPage(AppUpdateService updates, Action exitForUpdate)
     {
         _updates = updates;
@@ -17,8 +33,20 @@ public sealed partial class AboutPage : Page
         InitializeComponent();
 
         CurrentVersionText.Text = $"版本 {_updates.CurrentVersion}";
+        TokenBox.Password = UserSettings.Load().GitHubToken;
+        OssList.ItemsSource = OpenSourceComponents;
+
         if (AppUpdateService.LastResult is { } cached)
             Apply(cached);
+    }
+
+    private void OnSaveToken(object sender, RoutedEventArgs e)
+    {
+        var settings = UserSettings.Load();
+        settings.GitHubToken = TokenBox.Password.Trim();
+        settings.Save();
+        (Application.Current as App)?.RaiseSettingsChanged();
+        ShowStatus("已保存 GitHub Token", secondary: true);
     }
 
     private async void OnCheckUpdate(object sender, RoutedEventArgs e)

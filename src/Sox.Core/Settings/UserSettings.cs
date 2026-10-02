@@ -40,6 +40,11 @@ public class UserSettings
     // here, so only combinations are accepted.
     public string SummonHotkey { get; set; } = "Alt+Space";
 
+    // When on, the summon hotkey is ignored while a fullscreen app is in the foreground (games, video,
+    // fullscreen browsers), so pressing it there does not pop the spotlight over the game. Off by
+    // default; the check only looks at the foreground window's rectangle vs its monitor.
+    public bool DisableHotkeyInFullscreen { get; set; } = false;
+
     // Web-search engines shown on the 网络搜索 settings page and consulted by the query provider.
     public List<WebSearchEngineSetting> WebSearchEngines { get; set; } = WebSearchDefaults.Create();
 

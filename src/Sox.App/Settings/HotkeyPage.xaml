@@ -16,6 +16,10 @@
                     KeyDown="OnSummonHotkeyKeyDown" />
             </controls:SettingsCard>
 
+            <controls:SettingsCard Description="全屏游戏或应用在前台时忽略呼出热键" Header="在全屏游戏和应用中禁用">
+                <ToggleSwitch x:Name="FullscreenToggle" Toggled="OnFullscreenToggled" />
+            </controls:SettingsCard>
+
             <controls:SettingsCard Description="恢复默认 Alt+Space" Header="重置">
                 <Button Click="OnResetSummon" Content="重置为 Alt+Space" />
             </controls:SettingsCard>

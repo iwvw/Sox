@@ -57,6 +57,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Sox.Core\Core.csproj" />
     <ProjectReference Include="..\Sox.PluginSdk\PluginSdk.csproj" />
+    <!-- Compiled in so the App process can register the pinyin alias provider for its own instant
+         sources (application / window / history matching). Copied beside Sox.App.exe so the App can
+         load it; the service/hook keep their own copy under Service\Plugins. -->
+    <ProjectReference Include="..\Plugins\PinyinAlias\PinyinAlias.csproj" />
   </ItemGroup>
 
   <ItemGroup>

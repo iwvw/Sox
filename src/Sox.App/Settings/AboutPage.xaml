@@ -13,7 +13,13 @@
             </controls:SettingsCard>
 
             <controls:SettingsCard Description="检查是否有新版本" Header="版本与更新">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock
+                        x:Name="UpdateStatusText"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Visibility="Collapsed" />
                     <Button x:Name="CheckButton" Click="OnCheckUpdate" Content="检查更新" />
                     <Button
                         x:Name="UpdateButton"
@@ -24,19 +30,64 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <!--  Status sits on its own full-width row so a long message wraps instead of squeezing the
-                  card header into a vertical column.  -->
-            <TextBlock
-                x:Name="UpdateStatusText"
-                Margin="16,2,16,8"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                TextWrapping="Wrap"
-                Visibility="Collapsed" />
-
             <ProgressBar
                 x:Name="UpdateProgress"
                 MaxWidth="1000"
                 Visibility="Collapsed" />
+
+            <controls:SettingsCard Description="仅当发布仓库为私有需要；公开仓库留空即可" Header="GitHub Token">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PasswordBox x:Name="TokenBox" MinWidth="260" PasswordRevealMode="Peek" />
+                    <Button Click="OnSaveToken" Content="保存" />
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <!--  Plain card rather than a SettingsCard: that control lays content in a right-hand column
+                  next to its header, which left a wide empty gutter here. A Border gives the list the
+                  full card width.  -->
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+                <StackPanel Padding="16" Spacing="12">
+                    <TextBlock Text="开源组件" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Sox 的构建离不开以下开源项目，在此致谢。"
+                        TextWrapping="Wrap" />
+                    <ItemsControl x:Name="OssList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="0,4" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="8">
+                                        <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding License}" />
+                                    </StackPanel>
+                                    <HyperlinkButton
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{Binding Url}"
+                                        NavigateUri="{Binding Url}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>
