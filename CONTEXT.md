@@ -53,7 +53,7 @@ Sox：Windows 原生文件搜索工具。后端复用 Lertaro 核心（USN/MFT �
 | 内嵌 mini 窗 | 贴合文件对话框的独立小搜索窗（ADR-0012），选中回填路径 |
 | 单实例激活 | `Program` 用命名 Mutex `Sox.SingleInstance` 挡住第二个 App 进程；被挡下的进程把启动请求经命名管道 `Sox.App.Activation` 转给首实例，由 `SingleInstanceActivationServer` 唤出已有窗口 |
 | 优先级 | 按目录给搜索结果分层（高/正常/不常用/不索引），`PathPriorityResolver` 前缀匹配，High/Uncommon 转行为分加成、Excluded 硬过滤（ADR-0021） |
-| 自更新 | App 侧 `AppUpdateService` 查 GitHub Releases、下载匹配形态的产物、生成 cmd 脚本在退出后覆盖并重启（ADR-0021） |
+| 自更新 | App 侧 `AppUpdateService` 查 GitHub Releases（公开仓库，匿名 API + 镜像链）、下载匹配形态的产物、生成 cmd 脚本在退出后覆盖并重启（ADR-0021） |
 | 呼出热键 | `UserSettings.SummonHotkey`（默认 Alt+Space），`HotkeyService` 注册，设置页改动实时重注册 |
 | 内嵌面板（InlineSearchWindow） | 吸附在文件对话框下方的独立 WinUI 窗：空查询列已打开的 Explorer 目录，有查询走全局搜索，选中跳转对话框目录（ADR-0022） |
 | Quick Switch | 文件对话框内 Ctrl+G 跳回最近激活的资源管理器目录，手势与导航全在 hook 进程内完成（ADR-0022） |

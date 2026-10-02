@@ -36,7 +36,7 @@
 `AppUpdateService`（App 侧，参考 momomi `AppUpdateService`）：GitHub Releases `latest` API 查版本 → `System.Version` 比较 → 按形态（安装版 `unins000.exe` 判定）/架构选产物 → `HttpClient` 流式下载 → 生成 cmd 脚本等待 Sox 退出后静默安装（安装版）或 robocopy 覆盖（便携版，排除 `Data\`）并重启。启动时延迟 8 秒静默检查（受 `AutoCheckUpdates` 控制），「关于」页显示结果并支持一键更新。
 
 与 momomi 的差异：
-- **私有仓库 token**：Sox 发布仓库是 private，匿名 Releases API 返回 404。新增 `UserSettings.GitHubToken`（可选）；填了 token 就只直连（镜像会剥离 Authorization 头），留空则走镜像链（适用于公开仓库）。
+- **发布仓库已转为公开**（2026-10-03），自更新走匿名 GitHub Releases API + 镜像链，不再需要 token。此前私有仓库时曾有可选的 `UserSettings.GitHubToken` 与「关于」页输入框，仓库公开后已移除。
 - 不复用 Core 的 ECDSA 签名更新通道：那套依赖 `portable-updater.bat` 与提权服务，而 Sox 的安装版由 Inno 自身完成覆盖、便携版是用户目录内 robocopy，无需提权，直接用 cmd 脚本更简单。
 
 ### 6. UI 细节
@@ -47,8 +47,8 @@
 ## 后果
 
 - 设置面板新增「常规」「热键」「网络搜索」三页，「索引」页加「优先级」分组。
-- `UserSettings` 新增 `StartWithWindows`（默认改为 false）、`MinimizeToTrayOnStart`、`SummonHotkey`、`WebSearchEngines`、`PathPriorities`、`GitHubToken`。
-- 自更新在 private 仓库下需用户填 token 才能用；公开仓库开箱即用。
+- `UserSettings` 新增 `StartWithWindows`（默认改为 false）、`MinimizeToTrayOnStart`、`SummonHotkey`、`WebSearchEngines`、`PathPriorities`。
+- 自更新对公开仓库开箱即用（无需任何凭据）。
 
 ## 关联
 

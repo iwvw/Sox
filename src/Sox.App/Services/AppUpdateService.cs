@@ -34,13 +34,6 @@ public sealed class AppUpdateService
         "",
     ];
 
-    // With a token the request is authenticated, and the mirrors are anonymous pass-throughs that
-    // would strip the Authorization header and 404 on a private repo -- so go direct only.
-    private static string[] ActiveMirrors =>
-        CurrentToken.Length == 0 ? Mirrors : [""];
-
-    private static string CurrentToken => UserSettings.Load().GitHubToken?.Trim() ?? string.Empty;
-
     private readonly HttpClient _http;
     private string? _pendingScript;
 
@@ -49,17 +42,6 @@ public sealed class AppUpdateService
         _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("Sox/" + CurrentVersion);
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-    }
-
-    // Re-read the token before each request: the settings page can set it while the app is running, and
-    // this service is created once at startup, so a header captured in the constructor would go stale and
-    // a private-repo check would keep failing until a restart.
-    private void ApplyAuthHeader()
-    {
-        var token = CurrentToken;
-        _http.DefaultRequestHeaders.Authorization = token.Length == 0
-            ? null
-            : new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
     public static AppUpdateInfo? LastResult { get; private set; }
@@ -119,16 +101,15 @@ public sealed class AppUpdateService
     }
 
     /// <summary>Maps a transport failure to a user-facing message. The raw HttpRequestException text
-    /// ("Response status code does not indicate success: 404") is meaningless to a user; the 404 case in
-    /// particular almost always means the release repo is private and no token is configured.</summary>
+    /// ("Response status code does not indicate success: 404") is meaningless to a user.</summary>
     private static string DescribeError(Exception ex) => ex switch
     {
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } =>
-            "无法访问发布仓库（404）。若仓库为私有，请到「常规」页填写 GitHub Token。",
+            "无法访问发布仓库（404）。",
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized } =>
-            "发布仓库鉴权失败（401），请检查 GitHub Token 是否有效。",
+            "发布仓库鉴权失败（401）。",
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.Forbidden } =>
-            "发布仓库拒绝访问（403），请检查 GitHub Token 的权限。",
+            "发布仓库拒绝访问（403）。",
         TaskCanceledException => "请求超时，请检查网络连接。",
         HttpRequestException => "网络请求失败，请检查网络连接。",
         _ => ex.Message,
@@ -288,8 +269,7 @@ public sealed class AppUpdateService
     private async Task<string> FetchLatestAsync(CancellationToken ct)
     {
         Exception? last = null;
-        ApplyAuthHeader();
-        foreach (var mirror in ActiveMirrors)
+        foreach (var mirror in Mirrors)
         {
             try
             {
@@ -310,8 +290,7 @@ public sealed class AppUpdateService
     private async Task DownloadFileAsync(string url, string dest, IProgress<double>? progress, CancellationToken ct)
     {
         Exception? last = null;
-        ApplyAuthHeader();
-        foreach (var mirror in ActiveMirrors)
+        foreach (var mirror in Mirrors)
         {
             try
             {

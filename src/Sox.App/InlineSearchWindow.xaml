@@ -34,7 +34,7 @@
                         Grid.Column="1"
                         VerticalAlignment="Center"
                         FontSize="14"
-                        PlaceholderText="在此目录中搜索，回车跳转"
+                        PlaceholderText="全盘搜索，回车跳转"
                         Style="{StaticResource SoxSearchBoxStyle}"
                         TextChanged="SearchBox_TextChanged" />
 
@@ -45,10 +45,18 @@
                         Height="26"
                         Padding="0"
                         VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
                         Background="Transparent"
                         BorderThickness="0"
-                        ToolTipService.ToolTip="收藏">
-                        <FontIcon FontSize="13" Glyph="&#xE734;" />
+                        Click="FavoriteButton_Click"
+                        ToolTipService.ToolTip="显示收藏">
+                        <FontIcon
+                            x:Name="FavoriteGlyph"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            Glyph="&#xE734;" />
                     </Button>
 
                     <Button
@@ -58,10 +66,18 @@
                         Height="26"
                         Padding="0"
                         VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
                         Background="Transparent"
                         BorderThickness="0"
-                        ToolTipService.ToolTip="历史">
-                        <FontIcon FontSize="13" Glyph="&#xE81C;" />
+                        Click="HistoryButton_Click"
+                        ToolTipService.ToolTip="显示最近打开">
+                        <FontIcon
+                            x:Name="HistoryGlyph"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            Glyph="&#xE81C;" />
                     </Button>
 
                     <Button
@@ -71,10 +87,36 @@
                         Height="26"
                         Padding="0"
                         VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
                         Background="Transparent"
                         BorderThickness="0"
                         ToolTipService.ToolTip="工具">
-                        <FontIcon FontSize="13" Glyph="&#xE712;" />
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            Glyph="&#xE712;" />
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="ToolsFlyout">
+                                <MenuFlyoutItem x:Name="ToggleFavoriteMenuItem" Click="ToggleFavoriteCurrent_Click" Text="收藏当前文件夹">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE734;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Click="OpenCurrentFolder_Click" Text="打开当前文件夹">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE838;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Click="CopyCurrentPath_Click" Text="复制当前路径">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8C8;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
                 </Grid>
 

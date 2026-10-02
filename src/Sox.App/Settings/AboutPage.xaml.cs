@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sox.App.Services;
-using Sox.Core;
 
 namespace Sox.App.Settings;
 
@@ -33,20 +32,10 @@ public sealed partial class AboutPage : Page
         InitializeComponent();
 
         CurrentVersionText.Text = $"版本 {_updates.CurrentVersion}";
-        TokenBox.Password = UserSettings.Load().GitHubToken;
         OssList.ItemsSource = OpenSourceComponents;
 
         if (AppUpdateService.LastResult is { } cached)
             Apply(cached);
-    }
-
-    private void OnSaveToken(object sender, RoutedEventArgs e)
-    {
-        var settings = UserSettings.Load();
-        settings.GitHubToken = TokenBox.Password.Trim();
-        settings.Save();
-        (Application.Current as App)?.RaiseSettingsChanged();
-        ShowStatus("已保存 GitHub Token", secondary: true);
     }
 
     private async void OnCheckUpdate(object sender, RoutedEventArgs e)

@@ -37,7 +37,17 @@ public sealed partial class InlineSearchWindow : WindowEx
     private CancellationTokenSource? _searchCts;
     private bool _suppressTextChanged;
     private bool _shown;
+    private EmptyListMode _emptyMode = EmptyListMode.OpenFolders;
     private readonly List<string> _openedFolders = [];
+
+    // What the empty-query list shows: the Quick Switch targets (other open Explorer folders), the
+    // recently opened folders, or the user's pinned favorites.
+    private enum EmptyListMode
+    {
+        OpenFolders,
+        History,
+        Favorites,
+    }
 
     public InlineSearchWindow(SearchHost searchHost, HookIpcClient hookIpc, ThemeService themeService)
     {
@@ -167,6 +177,7 @@ public sealed partial class InlineSearchWindow : WindowEx
         // panel fights the keyboard on every poll.
         if (sameDialog && _shown)
         {
+            UpdateToggleGlyphs();
             Reposition();
             return;
         }
@@ -207,6 +218,8 @@ public sealed partial class InlineSearchWindow : WindowEx
         _suppressTextChanged = true;
         SearchBox.Text = string.Empty;
         _suppressTextChanged = false;
+        _emptyMode = EmptyListMode.OpenFolders;
+        UpdateToggleGlyphs();
         ShowOpenedFolders();
         Reposition();
 
@@ -249,11 +262,20 @@ public sealed partial class InlineSearchWindow : WindowEx
         }
     }
 
-    // The empty-query list: every other currently-open Explorer folder, as jump targets.
+    // The empty-query list: Quick Switch targets (other open Explorer folders), recently opened folders,
+    // or pinned favorites, depending on which toggle the user last chose.
     private void ShowOpenedFolders()
     {
         _results.Clear();
-        foreach (var folder in _openedFolders)
+
+        var folders = _emptyMode switch
+        {
+            EmptyListMode.History => LoadRecentFolderHistory(),
+            EmptyListMode.Favorites => LoadFavoriteFolders(),
+            _ => _openedFolders,
+        };
+
+        foreach (var folder in folders)
         {
             var name = Path.GetFileName(folder.TrimEnd('\\'));
             if (string.IsNullOrEmpty(name))
@@ -271,6 +293,57 @@ public sealed partial class InlineSearchWindow : WindowEx
         UpdateResultsVisibility();
     }
 
+    // Recently opened folders, most-recent first, excluding the dialog's own current folder. Files are
+    // left out: picking a row navigates the dialog to a folder, so only folder targets are useful.
+    private List<string> LoadRecentFolderHistory()
+    {
+        var folders = new List<string>();
+        try
+        {
+            foreach (var entry in Sox.Core.SearchHistoryStore.GetEntries())
+            {
+                if (entry.Kind != Sox.PluginSdk.Services.HistoryEntryKind.Folder
+                    || string.IsNullOrWhiteSpace(entry.Path))
+                {
+                    continue;
+                }
+
+                if (string.Equals(entry.Path.TrimEnd('\\'), _folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!folders.Contains(entry.Path, StringComparer.OrdinalIgnoreCase))
+                {
+                    folders.Add(entry.Path);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Inline: loading recent folders failed", ex);
+        }
+
+        return folders;
+    }
+
+    private List<string> LoadFavoriteFolders()
+    {
+        try
+        {
+            return Sox.Core.UserSettings.Load().Favorites
+                .Where(f => !string.IsNullOrWhiteSpace(f.Path))
+                .Select(f => f.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Inline: loading favorites failed", ex);
+            return [];
+        }
+    }
+
     // With no rows (no opened folder to jump to) the panel is just the search box: collapse the divider
     // and the list so no empty band is left behind.
     private void UpdateResultsVisibility()
@@ -278,6 +351,129 @@ public sealed partial class InlineSearchWindow : WindowEx
         var hasResults = _results.Count > 0;
         ResultsDivider.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
         ResultList.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The star shows the pinned favorites in the empty-query list; clicking it again returns to the
+    // open-folder list. Pinning/removing the dialog's current folder lives in the tools menu.
+    private void FavoriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        _emptyMode = _emptyMode == EmptyListMode.Favorites ? EmptyListMode.OpenFolders : EmptyListMode.Favorites;
+        UpdateToggleGlyphs();
+
+        // Only re-render when the box is empty; a live query keeps showing its search results.
+        if (string.IsNullOrEmpty(SearchBox.Text))
+        {
+            ShowOpenedFolders();
+            Reposition();
+        }
+    }
+
+    // Toggle the empty-query list between the open Explorer folders and the recently opened folders.
+    private void HistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        _emptyMode = _emptyMode == EmptyListMode.History ? EmptyListMode.OpenFolders : EmptyListMode.History;
+        UpdateToggleGlyphs();
+
+        if (string.IsNullOrEmpty(SearchBox.Text))
+        {
+            ShowOpenedFolders();
+            Reposition();
+        }
+    }
+
+    private void UpdateToggleGlyphs()
+    {
+        FavoriteGlyph.Foreground = GlyphBrush(_emptyMode == EmptyListMode.Favorites);
+        HistoryGlyph.Foreground = GlyphBrush(_emptyMode == EmptyListMode.History);
+        ToggleFavoriteMenuItem.Text = IsCurrentFolderFavorite() ? "取消收藏当前文件夹" : "收藏当前文件夹";
+    }
+
+    private static Microsoft.UI.Xaml.Media.Brush GlyphBrush(bool active) =>
+        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            active ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush"];
+
+    private bool IsCurrentFolderFavorite()
+    {
+        if (string.IsNullOrWhiteSpace(_folder))
+        {
+            return false;
+        }
+
+        try
+        {
+            var normalized = _folder.TrimEnd('\\');
+            return Sox.Core.UserSettings.Load().Favorites.Any(f =>
+                string.Equals(f.Path.TrimEnd('\\'), normalized, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Pin or unpin the dialog's CURRENT folder to Favorites.
+    private void ToggleFavoriteCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_folder))
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = Sox.Core.UserSettings.Load();
+            var normalized = _folder.TrimEnd('\\');
+            var existing = settings.Favorites.FirstOrDefault(f =>
+                string.Equals(f.Path.TrimEnd('\\'), normalized, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                settings.Favorites.Remove(existing);
+            }
+            else
+            {
+                var name = Path.GetFileName(normalized);
+                settings.Favorites.Add(new Sox.Core.FavoriteItemSetting
+                {
+                    Name = string.IsNullOrEmpty(name) ? normalized : name,
+                    Path = _folder,
+                });
+            }
+
+            settings.Save();
+            UpdateToggleGlyphs();
+
+            // If the favorites list is on screen, reflect the change immediately.
+            if (_emptyMode == EmptyListMode.Favorites && string.IsNullOrEmpty(SearchBox.Text))
+            {
+                ShowOpenedFolders();
+                Reposition();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Inline: toggling favorite failed", ex);
+        }
+    }
+
+    private void OpenCurrentFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_folder))
+        {
+            Sox.PluginSdk.Helpers.ShellOpenHelper.TryOpenFolder(_folder);
+        }
+    }
+
+    private void CopyCurrentPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_folder))
+        {
+            return;
+        }
+
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(_folder);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
     }
 
     public void HidePanel()

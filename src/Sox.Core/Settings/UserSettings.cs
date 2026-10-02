@@ -55,10 +55,6 @@ public class UserSettings
     public bool AutoCheckUpdates { get; set; } = true;
     public bool AutoSilentUpdate { get; set; } = false;
 
-    // Optional GitHub token for update checks. Only needed while the release repository is private:
-    // the anonymous Releases API returns 404 for a private repo. A fine-grained read-only token (or a
-    // classic token with just repo scope) is enough; leave empty for a public repository.
-    public string GitHubToken { get; set; } = string.Empty;
     // Bookkeeping rather than a preference: the release tag whose last startup install attempt failed, and
     // when. Without it a startup that cannot update (service not running, download failed) re-downloads a
     // full release zip on every single launch. Only UpdateCheckService reads or writes these; the About

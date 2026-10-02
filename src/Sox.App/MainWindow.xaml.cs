@@ -1949,7 +1949,29 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        var items = files.Select(r => new ResultItem(r, string.Empty)).ToList();
+        // Pinned favorites lead the empty-query list, so they have a visible home and are one keystroke
+        // away on summon. A favorite is a plain path; build it as a folder result.
+        var items = new List<ResultItem>();
+        foreach (var favorite in UserSettings.Load().Favorites)
+        {
+            if (string.IsNullOrWhiteSpace(favorite.Path))
+            {
+                continue;
+            }
+
+            var name = string.IsNullOrWhiteSpace(favorite.Name)
+                ? Path.GetFileName(favorite.Path.TrimEnd('\\'))
+                : favorite.Name;
+            var result = new SearchResult
+            {
+                Name = name,
+                Path = favorite.Path,
+                IsDir = Directory.Exists(favorite.Path),
+            };
+            items.Add(new ResultItem(result, string.Empty));
+        }
+
+        items.AddRange(files.Select(r => new ResultItem(r, string.Empty)));
         ApplyResults(items);
     }
 

@@ -35,13 +35,6 @@
                 MaxWidth="1000"
                 Visibility="Collapsed" />
 
-            <controls:SettingsCard Description="仅当发布仓库为私有需要；公开仓库留空即可" Header="GitHub Token">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PasswordBox x:Name="TokenBox" MinWidth="260" PasswordRevealMode="Peek" />
-                    <Button Click="OnSaveToken" Content="保存" />
-                </StackPanel>
-            </controls:SettingsCard>
-
             <!--  Plain card rather than a SettingsCard: that control lays content in a right-hand column
                   next to its header, which left a wide empty gutter here. A Border gives the list the
                   full card width.  -->
