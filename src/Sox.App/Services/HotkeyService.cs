@@ -13,17 +13,49 @@ internal sealed class HotkeyService : IDisposable
 
     private readonly IntPtr _hwnd;
     private bool _registered;
+    private string? _currentHotkey;
 
     public HotkeyService(IntPtr hwnd) => _hwnd = hwnd;
 
     public event Action? Pressed;
 
-    /// <summary>Registers <paramref name="hotkey"/> ("Alt+Space"), replacing any previous binding.
-    /// Returns false when the combination is malformed or already taken by another app.</summary>
+    /// <summary>The hotkey currently bound, or empty when none is.</summary>
+    public string Current => _currentHotkey ?? string.Empty;
+
+    /// <summary>Registers <paramref name="hotkey"/> ("Alt+Space"), replacing any previous binding. An
+    /// empty value intentionally clears the binding. Returns false when a non-empty combination is
+    /// malformed or already taken by another app; in that case the previous binding is restored rather
+    /// than left unbound, so a rejected change never strands the user with no hotkey.</summary>
     public bool Register(string hotkey)
     {
+        if (_registered && string.Equals(_currentHotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(hotkey))
+        {
+            Unregister();
+            _currentHotkey = string.Empty;
+            return true;
+        }
+
+        var previous = _currentHotkey;
         Unregister();
 
+        if (TryRegister(hotkey))
+        {
+            _currentHotkey = hotkey;
+            return true;
+        }
+
+        // Failed: put the previous binding back so a rejected change never strands the user with no hotkey.
+        if (!string.IsNullOrEmpty(previous) && TryRegister(previous))
+            _currentHotkey = previous;
+
+        return false;
+    }
+
+    private bool TryRegister(string hotkey)
+    {
         if (!HotkeyParser.TryParse(hotkey, out var modifiers, out var vk))
         {
             Log.Warning($"Invalid summon hotkey '{hotkey}'; leaving it unbound");

@@ -102,6 +102,22 @@ internal static class HotkeyParser
             "," => 0xBC,
             "." => 0xBE,
             "/" => 0xBF,
+            // Numpad keys, named to match KeyName's output below.
+            "numpad0" => 0x60,
+            "numpad1" => 0x61,
+            "numpad2" => 0x62,
+            "numpad3" => 0x63,
+            "numpad4" => 0x64,
+            "numpad5" => 0x65,
+            "numpad6" => 0x66,
+            "numpad7" => 0x67,
+            "numpad8" => 0x68,
+            "numpad9" => 0x69,
+            "numpadmultiply" or "multiply" => 0x6A,
+            "numpadadd" or "add" => 0x6B,
+            "numpadsubtract" or "subtract" => 0x6D,
+            "numpaddecimal" or "decimal" => 0x6E,
+            "numpaddivide" or "divide" => 0x6F,
             _ => 0,
         };
         return vk != 0;

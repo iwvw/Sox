@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using Sox.Core;
 
 namespace Sox.App.Services;
 
@@ -12,14 +13,16 @@ internal static class StartupService
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "Sox";
 
-    /// <summary>The command written to the Run value: the current exe, started hidden.</summary>
+    /// <summary>The command written to the Run value: the current exe, started hidden only when the user
+    /// asked to start minimized to tray. With that preference off, autostart shows the spotlight.</summary>
     private static string Command
     {
         get
         {
             var exe = Environment.ProcessPath
                 ?? Path.Combine(AppContext.BaseDirectory, "Sox.App.exe");
-            return $"\"{exe}\" --minimized";
+            var minimized = UserSettings.Load().MinimizeToTrayOnStart;
+            return minimized ? $"\"{exe}\" --minimized" : $"\"{exe}\"";
         }
     }
 

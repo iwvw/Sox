@@ -36,6 +36,23 @@
 - `HighlightTextBlock` 绑 `FontWeight` 会让 XAML 编译在 pass2 崩（`Unknown type`）；改为控件自己的 `Emphasized` 依赖属性。
 - public 页面构造用到的服务类型必须 public（`AppUpdateService`/`AppUpdateInfo`）。
 
+## Review 后修复（v0.2.1）
+
+对全量改动做了代码 review，修掉 8 个真实问题：
+
+1. **便携版自更新目录错位**：zip 顶层是 `Sox\`，robocopy 源是整个解压目录 → 会复制成 `appDir\Sox\`，真正的 exe 没被替换。改为 `ResolvePortablePayload` 下钻到唯一顶层目录。
+2. **便携版自更新未停服务**：`Service\` 下 dll 被 SoxService 锁住导致 robocopy 失败。脚本先 `sc stop SoxService` 再复制，复制后应用重启会自动拉起服务。
+3. **「启动时最小化到托盘」开关无效**：`StartupService.Command` 无条件加 `--minimized`。改为读 `MinimizeToTrayOnStart`，关闭时自启直接显示搜索框。
+4. **启动时最近文件与服务竞争**：非 `--minimized` 启动立即 `ShowWindow`→`LoadRecentAsync`，服务未起导致 pipe 超时（日志里的 `GetRecentFiles failed`）。抽出共享 `EnsureServiceReadyAsync`，两处都等就绪。
+5. **运行期填 GitHubToken 不生效**：Authorization 头在构造函数只读一次。改为每次请求前 `ApplyAuthHeader` 重新读设置。
+6. **热键被占用时静默丢失**：注册失败会先卸掉旧热键。改为失败时恢复上一个绑定，并把实际绑定值写回设置；热键页保存后回读显示真实值。
+7. **每次改设置都重写自启注册表**：用户在任务管理器手动禁用后会被重新加回。`OnAppSettingsChanged` 改为 `RefreshIfEnabled()`，只刷新已存在的项。
+8. **百度建议解析硬编码关键字 "bd"**：改为从响应文本检测 JSONP，并兼容对象/数组三种形态；顺带补了小键盘 VK 映射。
+
+另修：WebSearchPage 编辑对话框取消后不再触发保存；更新脚本不再 `pause`（隐藏窗口会卡死），robocopy 失败写 `%TEMP%\SoxUpdate\update-error.log`；自更新按实际变体（`coreclr.dll` 是否存在判定 merged/split）选择产物。
+
+验证：`dotnet build` 0 warning 0 error；启动后日志无 pipe timeout，更新检测 `current 0.2.0, latest 0.2.0`。仓库无测试工程（`dotnet test` 仅 restore）。
+
 ## 待用户视觉验收
 
 1. 「常规」页：自启开关写入注册表、最小化到托盘

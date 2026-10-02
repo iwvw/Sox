@@ -37,7 +37,9 @@ public sealed class AppUpdateService
     // With a token the request is authenticated, and the mirrors are anonymous pass-throughs that
     // would strip the Authorization header and 404 on a private repo -- so go direct only.
     private static string[] ActiveMirrors =>
-        string.IsNullOrWhiteSpace(UserSettings.Load().GitHubToken) ? Mirrors : [""];
+        CurrentToken.Length == 0 ? Mirrors : [""];
+
+    private static string CurrentToken => UserSettings.Load().GitHubToken?.Trim() ?? string.Empty;
 
     private readonly HttpClient _http;
     private string? _pendingScript;
@@ -47,14 +49,17 @@ public sealed class AppUpdateService
         _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("Sox/" + CurrentVersion);
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    }
 
-        // A private release repo needs auth; a public one works anonymously and this stays empty.
-        var token = UserSettings.Load().GitHubToken;
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            _http.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
-        }
+    // Re-read the token before each request: the settings page can set it while the app is running, and
+    // this service is created once at startup, so a header captured in the constructor would go stale and
+    // a private-repo check would keep failing until a restart.
+    private void ApplyAuthHeader()
+    {
+        var token = CurrentToken;
+        _http.DefaultRequestHeaders.Authorization = token.Length == 0
+            ? null
+            : new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
     public static AppUpdateInfo? LastResult { get; private set; }
@@ -138,6 +143,14 @@ public sealed class AppUpdateService
                 if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
                 ZipFile.ExtractToDirectory(downloaded, extractDir);
                 try { File.Delete(downloaded); } catch { }
+
+                // The portable zip wraps everything in a single top-level "Sox" folder (see
+                // build-release.ps1). Copy that folder's *contents* into the app dir, not the folder
+                // itself, or the update would land in appDir\Sox\ and leave the running exe untouched.
+                var payload = ResolvePortablePayload(extractDir);
+                if (payload is null)
+                    return info with { Error = "更新包结构无法识别（缺少 Sox 目录）" };
+                extractDir = payload;
             }
 
             _pendingScript = CreateUpdaterScript(setupExe, extractDir);
@@ -161,6 +174,21 @@ public sealed class AppUpdateService
         return script;
     }
 
+    /// <summary>The directory whose contents should be mirrored over the app dir. The portable zip
+    /// contains a single top-level folder (currently "Sox"); if there is exactly one directory and no
+    /// loose files, descend into it, otherwise treat the extract root as the payload.</summary>
+    private static string? ResolvePortablePayload(string extractDir)
+    {
+        var dirs = Directory.GetDirectories(extractDir);
+        var files = Directory.GetFiles(extractDir);
+        if (files.Length == 0 && dirs.Length == 1)
+            return dirs[0];
+
+        // A single folder named Sox even alongside a readme is still the payload.
+        var sox = dirs.FirstOrDefault(d => string.Equals(Path.GetFileName(d), "Sox", StringComparison.OrdinalIgnoreCase));
+        return sox ?? (files.Length > 0 ? extractDir : null);
+    }
+
     private static string CreateUpdaterScript(string? setupExe, string? extractDir)
     {
         var appDir = AppContext.BaseDirectory.TrimEnd('\\');
@@ -176,13 +204,21 @@ public sealed class AppUpdateService
 
         if (setupExe is not null)
         {
-            // Installer path: run the new setup silently, which also re-registers the service.
+            // Installer path: run the new setup silently, which also stops the service, replaces the
+            // files and re-registers the service.
             sb.AppendLine($"\"{setupExe}\" /SILENT /SP- /NORESTART");
         }
         else if (extractDir is not null)
         {
-            // Portable path: mirror the new files over the old, but never touch user data (Data\).
+            // Portable path: the service runs from Service\ under the app dir and holds those DLLs
+            // locked, so it has to be stopped before robocopy can replace them. The relaunched app
+            // starts it again. User data (Data\) is never touched.
+            sb.AppendLine("sc stop SoxService >nul 2>&1");
+            sb.AppendLine("timeout /t 2 /nobreak >nul");
             sb.AppendLine($"robocopy \"{extractDir}\" \"{appDir}\" /E /XD Data /NFL /NDL /NJH /NJS /R:1 /W:1 >nul");
+            // robocopy exit codes 0-7 are success (1 = files copied); 8 and above are real failures.
+            // The script runs in a hidden window, so never `pause`: log the failure and still relaunch.
+            sb.AppendLine("if errorlevel 8 echo %date% %time% robocopy errorlevel %errorlevel% > \"%TEMP%\\SoxUpdate\\update-error.log\"");
             sb.AppendLine($"rmdir /s /q \"{extractDir}\"");
         }
 
@@ -195,20 +231,30 @@ public sealed class AppUpdateService
     }
 
     /// <summary>Picks the artifact for this install: setup.exe when installed, else the portable zip,
-    /// scoped by architecture and (for portability) the merged variant.</summary>
+    /// scoped by architecture and the running variant (merged = self-contained, split = framework
+    /// dependent) so a split install is not silently swapped to the much larger merged package.</summary>
     private static string? SelectAssetUrl(string version, IReadOnlyList<ReleaseAsset> assets)
     {
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
             == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64";
 
+        var variant = IsSelfContained ? "merged" : "split";
         var want = IsInstalled
-            ? $"-{arch}-merged-setup.exe"
-            : $"-{arch}-merged-portable.zip";
+            ? $"-{arch}-{variant}-setup.exe"
+            : $"-{arch}-{variant}-portable.zip";
 
-        // Exact naming first, then a looser fallback so a renamed variant still resolves.
+        // Exact naming first, then the other variant, then a looser fallback so a renamed or missing
+        // variant still resolves.
         var exact = assets.FirstOrDefault(a => a.Name.EndsWith(want, StringComparison.OrdinalIgnoreCase));
         if (exact is not null)
             return exact.Url;
+
+        var other = IsInstalled
+            ? $"-{arch}-merged-setup.exe"
+            : $"-{arch}-merged-portable.zip";
+        var fallback = assets.FirstOrDefault(a => a.Name.EndsWith(other, StringComparison.OrdinalIgnoreCase));
+        if (fallback is not null)
+            return fallback.Url;
 
         var installed = IsInstalled;
         return assets.FirstOrDefault(a =>
@@ -218,9 +264,15 @@ public sealed class AppUpdateService
             ?.Url;
     }
 
+    /// <summary>True when this copy ships its own .NET runtime (the merged variant). A framework
+    /// dependent publish has no coreclr.dll beside the app; a self-contained one does.</summary>
+    private static bool IsSelfContained =>
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "coreclr.dll"));
+
     private async Task<string> FetchLatestAsync(CancellationToken ct)
     {
         Exception? last = null;
+        ApplyAuthHeader();
         foreach (var mirror in ActiveMirrors)
         {
             try
@@ -242,6 +294,7 @@ public sealed class AppUpdateService
     private async Task DownloadFileAsync(string url, string dest, IProgress<double>? progress, CancellationToken ct)
     {
         Exception? last = null;
+        ApplyAuthHeader();
         foreach (var mirror in ActiveMirrors)
         {
             try

@@ -48,7 +48,9 @@ public sealed partial class WebSearchPage : Page
         if (EngineList.SelectedItem is not EngineRow row)
             return;
 
-        await EditEngineAsync(row.Model, isNew: false);
+        if (!await EditEngineAsync(row.Model, isNew: false))
+            return;
+
         row.Refresh();
         Save();
     }

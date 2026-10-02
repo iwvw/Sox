@@ -35,7 +35,7 @@ public sealed partial class HotkeyPage : Page
         {
             SummonHotkeyBox.Text = string.Empty;
             _settings.SummonHotkey = string.Empty;
-            Save();
+            SaveAndSync();
             return;
         }
 
@@ -59,23 +59,25 @@ public sealed partial class HotkeyPage : Page
 
         SummonHotkeyBox.Text = text;
         _settings.SummonHotkey = text;
-        Save();
+        SaveAndSync();
     }
 
     private void OnResetSummon(object sender, RoutedEventArgs e)
     {
-        SummonHotkeyBox.Text = "Alt+Space";
         _settings.SummonHotkey = "Alt+Space";
-        Save();
+        SaveAndSync();
     }
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
-    private void Save()
+    // Saves, then reads the preference back: the main window may reject the combination (already taken)
+    // and restore the previous binding, so the box must show what is actually bound, not what was typed.
+    private void SaveAndSync()
     {
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
+        SummonHotkeyBox.Text = _settings.SummonHotkey;
     }
 
     private async Task ShowMessageAsync(string title, string message)

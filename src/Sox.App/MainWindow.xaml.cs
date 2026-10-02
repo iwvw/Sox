@@ -612,9 +612,24 @@ public sealed partial class MainWindow : WindowEx
     /// hotkey page saves, so a change takes effect without a restart.</summary>
     private void ApplySummonHotkey(string hotkey)
     {
-        if (!_hotkeys.Register(hotkey))
+        if (_hotkeys.Register(hotkey))
+            return;
+
+        Log.Warning($"Summon hotkey '{hotkey}' could not be registered");
+
+        // If a previous binding was restored, the requested one is unusable right now; write the actual
+        // bound value back so the settings page reflects reality instead of showing a hotkey that does
+        // nothing. At startup there is no previous binding, so leave the preference untouched.
+        var actual = _hotkeys.Current;
+        if (!string.IsNullOrEmpty(actual) && !string.Equals(actual, hotkey, StringComparison.OrdinalIgnoreCase))
         {
-            Log.Warning($"Summon hotkey '{hotkey}' could not be registered");
+            var settings = UserSettings.Load();
+            if (!string.Equals(settings.SummonHotkey, actual, StringComparison.Ordinal))
+            {
+                settings.SummonHotkey = actual;
+                settings.Save();
+                App.Current.RaiseSettingsChanged();
+            }
         }
     }
 
@@ -645,7 +660,7 @@ public sealed partial class MainWindow : WindowEx
 
     private async Task InitializeAsync()
     {
-        var ready = await _searchHost.EnsureServiceAsync();
+        var ready = await EnsureServiceReadyAsync();
         if (!ready)
         {
             Log.Warning("SoxService is not reachable");
@@ -667,6 +682,13 @@ public sealed partial class MainWindow : WindowEx
             Log.Error("Apply Everything IPC failed", ex);
         }
     }
+
+    // One shared readiness task: both InitializeAsync and the startup recent-files load need the
+    // service up, and without sharing they would race to bootstrap it (and the recent load would query
+    // the pipe before the service answered, timing out on the first show).
+    private Task<bool>? _serviceReady;
+
+    private Task<bool> EnsureServiceReadyAsync() => _serviceReady ??= _searchHost.EnsureServiceAsync();
 
     private void OnIndexStatus(UsnIndexer.IndexerStatus status)
     {
@@ -732,7 +754,9 @@ public sealed partial class MainWindow : WindowEx
             PushSearchContext(settings);
             _tray.Show(!settings.HideTrayIcon);
             ApplySummonHotkey(settings.SummonHotkey);
-            StartupService.SetEnabled(settings.StartWithWindows);
+            // Re-assert the Run command only when autostart is already on (so a changed "start
+            // minimized" preference is picked up) -- never re-enable an entry the user removed.
+            StartupService.RefreshIfEnabled();
             ResizeToContent();
         }
         catch (Exception ex)
@@ -1703,6 +1727,13 @@ public sealed partial class MainWindow : WindowEx
     {
         _currentQuery = string.Empty;
         _resultCache.Clear();
+
+        // On a normal (non --minimized) launch the window is shown immediately and this fires before the
+        // service is up; wait for readiness so the first show is not an empty list plus a pipe timeout.
+        if (!await EnsureServiceReadyAsync())
+        {
+            return;
+        }
 
         var files = await Task.Run(() => _searchHost.GetRecentAsync(20));
 

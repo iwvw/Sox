@@ -98,7 +98,7 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
                 {
                     var url = BuildUrl(engine.SuggestUrl, term);
                     var json = await Http.GetStringAsync(url).ConfigureAwait(false);
-                    result = ParseSuggestions(engine.Keyword, json);
+                    result = ParseSuggestions(json);
                 }
                 catch
                 {
@@ -119,39 +119,41 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
         return Array.Empty<string>();
     }
 
-    private static IReadOnlyList<string> ParseSuggestions(string keyword, string json)
+    private static IReadOnlyList<string> ParseSuggestions(string json)
     {
         var list = new List<string>();
         try
         {
-            if (keyword == "bd")
+            var payload = StripJsonp(json);
+            using var doc = JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Array)
             {
-                // Baidu wraps the array in a JSONP callback: window.bdsug.sug({q:"...",s:["a","b"]});
-                var start = json.IndexOf('[', StringComparison.Ordinal);
-                var end = json.LastIndexOf(']');
-                if (start < 0 || end <= start)
+                // Google / Bing osjson shape: ["query", ["a", "b", ...]].
+                if (root.GetArrayLength() >= 2 && root[1].ValueKind == JsonValueKind.Array)
                 {
+                    AddStrings(root[1], list);
                     return list;
                 }
 
-                json = json[start..(end + 1)];
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 2)
-            {
+                // Flat array of strings (Baidu's own "s" array once unwrapped).
+                AddStrings(root, list);
                 return list;
             }
 
-            foreach (var item in root[1].EnumerateArray())
+            if (root.ValueKind == JsonValueKind.Object)
             {
-                if (item.ValueKind == JsonValueKind.String)
+                // Baidu's callback object: {q:"...", s:["a","b"]}. Try the usual property names.
+                foreach (var name in (string[])["s", "suggestions", "results", "data"])
                 {
-                    var text = item.GetString();
-                    if (!string.IsNullOrWhiteSpace(text))
+                    if (root.TryGetProperty(name, out var arr) && arr.ValueKind == JsonValueKind.Array)
                     {
-                        list.Add(text);
+                        AddStrings(arr, list);
+                        if (list.Count > 0)
+                        {
+                            return list;
+                        }
                     }
                 }
             }
@@ -162,6 +164,43 @@ internal sealed class WebSearchQueryProvider : IQueryProvider, IDisposable
         }
 
         return list;
+    }
+
+    /// <summary>Returns the JSON inside a JSONP wrapper, or the payload unchanged when it is already
+    /// JSON. Detected from the text, not the engine, so any JSONP suggestion endpoint works.</summary>
+    private static string StripJsonp(string json)
+    {
+        var trimmed = json.TrimStart();
+        if (trimmed.StartsWith("[", StringComparison.Ordinal) || trimmed.StartsWith("{", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        var open = json.IndexOf('(');
+        var close = json.LastIndexOf(')');
+        if (open >= 0 && close > open)
+        {
+            return json[(open + 1)..close];
+        }
+
+        var start = json.IndexOf('[', StringComparison.Ordinal);
+        var end = json.LastIndexOf(']');
+        return start >= 0 && end > start ? json[start..(end + 1)] : json;
+    }
+
+    private static void AddStrings(JsonElement array, List<string> list)
+    {
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                var text = item.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    list.Add(text);
+                }
+            }
+        }
     }
 
     private static string BuildUrl(string template, string value)
