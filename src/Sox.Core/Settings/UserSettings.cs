@@ -17,9 +17,13 @@ public class UserSettings
         "%USERPROFILE%\\AppData",
         "%ProgramFiles(x86)%"
     };
+    // No leading ".*": a rule that matches "any folder whose name starts with a dot" silently hides
+    // every leaf under real user-data directories like ".opencode", ".git" or ".vscode", and there is
+    // no way for a bare glob to tell a dot-folder from such data the user does want to find. If you
+    // really want to exclude a dot directory, put it in IgnoredPathRegexes or ExcludedPaths instead,
+    // which can be scoped precisely.
     public List<string> IgnoredPathGlobs { get; set; } = new()
     {
-        ".*",
         "~*",
         "\\$*",
         "node_modules"

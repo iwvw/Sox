@@ -287,7 +287,7 @@ Drives: List<DriveIndexStatus>
 | `DefaultFileManager` | `DefaultFileManagerSetting` | 见下 | 第三方文件管理器重定向 |
 | `Favorites` | `List<FavoriteItemSetting>` | 空 | 收藏项 |
 | `ExcludedPaths` | `List<string>` | `Windows.old` / `ProgramData` / `SystemRoot` / `ProgramW6432` / `AppData` / `ProgramFiles(x86)` | 排除根路径（支持环境变量） |
-| `IgnoredPathGlobs` | `List<string>` | `.*`、`~*`、`\$*`、`node_modules` | 忽略 glob |
+| `IgnoredPathGlobs` | `List<string>` | `~*`、`\$*`、`node_modules` | 忽略 glob |
 | `IgnoredPathRegexes` | `List<string>` | 空 | 忽略正则 |
 | `BlacklistedProcesses` | `List<string>` | 空 | 全局进程黑名单（不弹窗） |
 | `EnableHistory` | `bool` | `true` | 启用搜索历史 |
