@@ -84,6 +84,12 @@ public sealed partial class SearchPage : Page
         Save();
     }
 
+    private void OnTextChangedSave(object sender, TextChangedEventArgs e)
+    {
+        if (_loading) return;
+        Save();
+    }
+
     private void Save()
     {
         _settings.ExcludedPaths = SplitLines(ExcludedPathsBox.Text);

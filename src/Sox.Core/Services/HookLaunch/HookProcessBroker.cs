@@ -50,4 +50,49 @@ public static class HookProcessBroker
             return true;
         }
     }
+
+    /// <summary>
+    /// Terminates every hook process this service started and clears the registry. Called from
+    /// <c>UsnService.OnStop</c>: the hook is the same Sox.Service.exe image, so a surviving hook holds
+    /// Service\Sox.Service.exe locked and makes an in-place update fail even after the service itself
+    /// reports STOPPED.
+    /// </summary>
+    public static void KillAll()
+    {
+        lock (_liveHooksGate)
+        {
+            foreach (var entry in _liveHooks)
+            {
+                KillQuietly(entry.Value);
+                entry.Value.Dispose();
+            }
+
+            _liveHooks.Clear();
+        }
+
+        // A hook launched by a previous service process (the service crashed or was restarted) is not in
+        // _liveHooks, so sweep every other Sox.Service.exe image by name as well. OnStop runs in the
+        // service process, so that process is the only one that must survive.
+        var self = Environment.ProcessId;
+        foreach (var process in Process.GetProcessesByName("Sox.Service"))
+        {
+            using (process)
+            {
+                if (process.Id == self)
+                    continue;
+
+                KillQuietly(process);
+            }
+        }
+    }
+
+    private static void KillQuietly(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch { /* already gone, or access denied; nothing more this process can do */ }
+    }
 }

@@ -59,6 +59,17 @@ public class UsnService : ServiceBase
     protected override void OnStop()
     {
         Logger.Log("[UsnService] Service Stopping...");
+        // Before anything else: the hook is another Sox.Service.exe process and keeps the install's
+        // Service\Sox.Service.exe locked, which blocks an in-place update once the SCM reports STOPPED.
+        try
+        {
+            HookProcessBroker.KillAll();
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"[UsnService] Failed to terminate hook processes: {ex.Message}", LogLevel.Warn);
+        }
+
         _pipeServer?.Stop();
         _pipeServer?.Dispose();
         _pipeServer = null;

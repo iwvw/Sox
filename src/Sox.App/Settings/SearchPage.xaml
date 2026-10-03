@@ -46,7 +46,8 @@
                             AcceptsReturn="True"
                             FontFamily="Cascadia Mono, Consolas, monospace"
                             Height="100"
-                            TextWrapping="Wrap" />
+                            TextWrapping="Wrap"
+                            TextChanged="OnTextChangedSave" />
                     </controls:SettingsCard>
                     <controls:SettingsCard Header="忽略的路径正则（每行一个）">
                         <TextBox
@@ -55,7 +56,8 @@
                             AcceptsReturn="True"
                             FontFamily="Cascadia Mono, Consolas, monospace"
                             Height="100"
-                            TextWrapping="Wrap" />
+                            TextWrapping="Wrap"
+                            TextChanged="OnTextChangedSave" />
                     </controls:SettingsCard>
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
@@ -69,7 +71,8 @@
                             AcceptsReturn="True"
                             FontFamily="Cascadia Mono, Consolas, monospace"
                             Height="120"
-                            TextWrapping="Wrap" />
+                            TextWrapping="Wrap"
+                            TextChanged="OnTextChangedSave" />
                     </controls:SettingsCard>
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>

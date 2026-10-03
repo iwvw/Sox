@@ -210,8 +210,26 @@ public sealed class AppUpdateService
             // Portable path: the service runs from Service\ under the app dir and holds those DLLs
             // locked, so it has to be stopped before robocopy can replace them. The relaunched app
             // starts it again. User data (Data\) is never touched.
+            //
+            // Wait for STOPPED instead of a fixed sleep: the service also terminates its hook child on
+            // stop, and copying while Service\Sox.Service.exe is still mapped fails. `sc stop` returns
+            // before the SCM reaches STOPPED, so poll `sc query` for the STOPPED state (or a missing
+            // service) rather than guessing a delay.
             sb.AppendLine("sc stop SoxService >nul 2>&1");
-            sb.AppendLine("timeout /t 2 /nobreak >nul");
+            sb.AppendLine("set /a _t=0");
+            sb.AppendLine(":WAITSTOP");
+            sb.AppendLine("sc query SoxService 2>nul | find \"STOPPED\" >nul");
+            sb.AppendLine("if not errorlevel 1 goto SVCDOWN");
+            sb.AppendLine("sc query SoxService >nul 2>&1");
+            sb.AppendLine("if errorlevel 1 goto SVCDOWN");
+            sb.AppendLine("set /a _t+=1");
+            sb.AppendLine("if %_t% geq 30 goto SVCDOWN");
+            sb.AppendLine("timeout /t 1 /nobreak >nul");
+            sb.AppendLine("goto WAITSTOP");
+            sb.AppendLine(":SVCDOWN");
+            // A --hook child from a pre-fix build survives the service stop and keeps
+            // Service\Sox.Service.exe locked; force it down before robocopy overwrites it.
+            sb.AppendLine("taskkill /F /IM Sox.Service.exe /T >nul 2>&1");
             sb.AppendLine($"robocopy \"{extractDir}\" \"{appDir}\" /E /XD Data /NFL /NDL /NJH /NJS /R:1 /W:1 >nul");
             // robocopy exit codes 0-7 are success (1 = files copied); 8 and above are real failures.
             // The script runs in a hidden window, so never `pause`: log the failure and still relaunch.

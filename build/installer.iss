@@ -97,13 +97,35 @@ const
   WindowsAppSdkUrl = 'https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe';
 
 // 升级前停掉服务：运行中的 Sox.Service.exe 会锁住文件，导致 [Files] 复制新版本失败。
-// 保留服务注册（路径不变），安装完成后由 --install 重新配置并启动。
+// 服务自身在 OnStop 里会顺带终止 hook 子进程（同一 exe 镜像），但 sc stop 返回后 SCM 未必已到
+// STOPPED，固定 sleep 会在服务仍持有 exe 时开始复制。这里轮询 sc query，直到出现 STOPPED 或服务
+// 已不存在（卸载过），最多等 30 秒。保留服务注册（路径不变），安装完成后由 --install 重新配置并启动。
 procedure StopServiceBeforeInstall();
 var
   ResultCode: Integer;
+  Tries: Integer;
 begin
   Exec('sc.exe', 'stop {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(1500);
+  Tries := 0;
+  while Tries < 30 do
+  begin
+    // sc query 对已不存在的服务返回非 0；用 cmd 判断输出里是否含 STOPPED。
+    if Exec('cmd.exe', '/c sc query {#ServiceName} 2>nul | find "STOPPED" >nul', '',
+        SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      if ResultCode = 0 then
+        Break;
+    if Exec('cmd.exe', '/c sc query {#ServiceName} >nul 2>&1', '',
+        SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      if ResultCode <> 0 then
+        Break;
+    Sleep(1000);
+    Tries := Tries + 1;
+  end;
+
+  // 服务停掉后仍可能有 --hook 子进程存活：修复前的版本不会在 OnStop 里清理它，而它锁着
+  // Service\Sox.Service.exe，会让 [Files] 覆盖失败。安装程序自身不是 Sox.Service.exe 镜像，
+  // 这里强制结束所有残留实例（含 hook 子进程）是安全的。
+  Exec('taskkill.exe', '/F /IM Sox.Service.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // 检测 .NET Desktop Runtime：读取共享框架目录里是否存在 Microsoft.WindowsDesktop.App。
