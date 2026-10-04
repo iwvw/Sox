@@ -573,7 +573,20 @@ public sealed partial class MainWindow : WindowEx
             Log.Error("Tray dispose during update failed", ex);
         }
 
-        Application.Current.Exit();
+        // Hard exit, not Application.Current.Exit(): the latter asks the message loop to unwind, which
+        // left the process alive long enough that the updater script's wait-for-Sox.App.exe loop never
+        // saw it go -- the update then sat waiting forever and the new installer never ran. The update
+        // script owns everything from here (it is already running in its own process), so nothing is
+        // lost by terminating outright. Flush the log first so the handoff is recorded.
+        try
+        {
+            Core.Logger.Log("[App] Exiting for update; handing off to the updater script.");
+        }
+        catch
+        {
+        }
+
+        Environment.Exit(0);
     }
 
     private void OpenSettings() => OpenSettings(null);
@@ -1214,6 +1227,15 @@ public sealed partial class MainWindow : WindowEx
         if (_resetting)
         {
             return;
+        }
+
+        // Typing while the action menu is up means the user has moved on from the picked row: close the
+        // menu so the new search's results are what shows. Without this the menu stayed on screen (the
+        // menu replaces the result list, and nothing else was resetting it), so re-summoning or typing a
+        // new query kept showing the previous row's actions.
+        if (_menuOpen)
+        {
+            CloseMenu();
         }
 
         // Keep the box to ASCII while not in a network-search scope, so file search never needs an IME
@@ -1898,23 +1920,16 @@ public sealed partial class MainWindow : WindowEx
         HideWindow();
     }
 
-    // The shell's Properties dialog (the same one a right-click -> 属性 shows), via the "properties"
-    // verb. ShowWindow is hidden first so the dialog is not owned by a window that is about to cloak.
+    // The shell's Properties dialog (the same one a right-click -> 属性 shows). Goes through
+    // ShellExecuteEx with SEE_MASK_INVOKEIDLIST -- Process.Start(Verb: "properties") silently does
+    // nothing because without that flag the shell cannot resolve the context-menu verb. The window is
+    // hidden first so the dialog is not owned by a window that is about to cloak.
     private void ShowProperties(ResultItem item)
     {
         HideWindow();
-        try
+        if (!Sox.PluginSdk.Helpers.ShellOpenHelper.TryShowProperties(item.Path))
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = item.Path,
-                UseShellExecute = true,
-                Verb = "properties",
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error("ShowProperties failed", ex);
+            Log.Warning($"ShowProperties failed for '{item.Path}'");
         }
     }
 

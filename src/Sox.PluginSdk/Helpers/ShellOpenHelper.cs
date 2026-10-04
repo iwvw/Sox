@@ -45,6 +45,62 @@ public static class ShellOpenHelper
     [DllImport("shell32.dll")]
     private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr[]? apidl, uint dwFlags);
 
+    // SEE_MASK_INVOKEIDLIST (0x0000000C) is what makes ShellExecuteEx resolve a shell CONTEXT-MENU verb
+    // like "properties": without it the shell only knows the static registered verbs (open, edit, ...)
+    // and silently ignores "properties", which is why Process.Start(Verb: "properties") did nothing.
+    private const uint SeeMaskInvokeIdList = 0x0000000C;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SHELLEXECUTEINFO
+    {
+        public int cbSize;
+        public uint fMask;
+        public IntPtr hwnd;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpVerb;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpFile;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpParameters;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpDirectory;
+        public int nShow;
+        public IntPtr hInstApp;
+        public IntPtr lpIDList;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpClass;
+        public IntPtr hkeyClass;
+        public uint dwHotKey;
+        public IntPtr hIcon;
+        public IntPtr hProcess;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool ShellExecuteExW(ref SHELLEXECUTEINFO lpExecInfo);
+
+    /// <summary>
+    /// Shows the shell's Properties dialog for <paramref name="itemPath"/> (the same one the Explorer
+    /// context menu's 属性 opens).
+    /// </summary>
+    /// <returns><see langword="false"/> when the shell could not show it.</returns>
+    public static bool TryShowProperties(string? itemPath)
+    {
+        if (string.IsNullOrWhiteSpace(itemPath)) return false;
+
+        try
+        {
+            var info = new SHELLEXECUTEINFO
+            {
+                cbSize = Marshal.SizeOf<SHELLEXECUTEINFO>(),
+                fMask = SeeMaskInvokeIdList,
+                hwnd = IntPtr.Zero,
+                lpVerb = "properties",
+                lpFile = itemPath,
+                nShow = SwShowNormal,
+            };
+            return ShellExecuteExW(ref info);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Opens <paramref name="folderPath"/> the way a double-click would: whatever the user has registered
     /// for folders (Explorer, or a replacement file manager) decides what happens.

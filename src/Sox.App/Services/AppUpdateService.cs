@@ -128,6 +128,11 @@ public sealed class AppUpdateService
             var workDir = Path.Combine(Path.GetTempPath(), "SoxUpdate");
             Directory.CreateDirectory(workDir);
 
+            // Clear leftovers from earlier attempts: previously the setup was never deleted after use,
+            // so every release this ever downloaded was still sitting here. Remove stale files now so
+            // the folder holds only the current download.
+            CleanStaleDownloads(workDir);
+
             var fileName = Path.GetFileName(new Uri(info.DownloadUrl).AbsolutePath);
             var downloaded = Path.Combine(workDir, fileName);
             await DownloadFileAsync(info.DownloadUrl, downloaded, progress, ct).ConfigureAwait(false);
@@ -171,6 +176,35 @@ public sealed class AppUpdateService
         return script;
     }
 
+    // Deletes old setup/zip downloads and extracted payloads left in the update folder by earlier runs.
+    // Never touches the script this run just created (that path is only set after this runs).
+    private static void CleanStaleDownloads(string workDir)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(workDir))
+            {
+                var name = Path.GetFileName(file);
+                if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(file); } catch { }
+                }
+            }
+
+            var extract = Path.Combine(workDir, "extract");
+            if (Directory.Exists(extract))
+            {
+                try { Directory.Delete(extract, true); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Cleaning stale update downloads failed", ex);
+        }
+    }
+
     /// <summary>The directory whose contents should be mirrored over the app dir. The portable zip
     /// contains a single top-level folder (currently "Sox"); if there is exactly one directory and no
     /// loose files, descend into it, otherwise treat the extract root as the payload.</summary>
@@ -201,9 +235,13 @@ public sealed class AppUpdateService
 
         if (setupExe is not null)
         {
-            // Installer path: run the new setup silently, which also stops the service, replaces the
-            // files and re-registers the service.
-            sb.AppendLine($"\"{setupExe}\" /SILENT /SP- /NORESTART");
+            // Installer path. Inno is built with PrivilegesRequired=admin (it registers a Windows
+            // service), so a silent run from this non-elevated script would fail or hang on an
+            // unanswerable UAC prompt. Elevate just this one step with Start-Process -Verb RunAs -Wait:
+            // the user gets a single UAC prompt, the install completes, and control returns here. The
+            // setup is deleted afterward so downloads do not pile up in %TEMP% release after release.
+            sb.AppendLine($"powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process -FilePath '{setupExe}' -ArgumentList '/SILENT','/SP-','/NORESTART' -Verb RunAs -Wait\"");
+            sb.AppendLine($"del /f /q \"{setupExe}\" >nul 2>&1");
         }
         else if (extractDir is not null)
         {
