@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace Sox.App.ViewModels;
 
 internal enum ResultAction
@@ -20,10 +18,8 @@ internal enum ResultAction
     CopyFolderPath,
 }
 
-internal sealed class ActionItem : INotifyPropertyChanged
+internal sealed class ActionItem
 {
-    private string _shortcutText = string.Empty;
-
     public ActionItem(ResultAction action, string title, string glyph)
     {
         Action = action;
@@ -31,26 +27,9 @@ internal sealed class ActionItem : INotifyPropertyChanged
         Glyph = glyph;
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-
     public ResultAction Action { get; }
 
     public string Title { get; }
 
     public string Glyph { get; }
-
-    public string ShortcutText
-    {
-        get => _shortcutText;
-        set
-        {
-            if (_shortcutText == value)
-            {
-                return;
-            }
-
-            _shortcutText = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShortcutText)));
-        }
-    }
 }

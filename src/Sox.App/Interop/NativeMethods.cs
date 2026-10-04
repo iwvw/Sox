@@ -46,6 +46,13 @@ internal static class NativeMethods
     public const int WM_HOTKEY = 0x0312;
     public const int WM_DPICHANGED = 0x02E0;
 
+    // Extra mouse buttons (the side back/forward buttons). WM_XBUTTONUP's high word of wParam carries
+    // which button: XBUTTON1 is the "back" side button, XBUTTON2 the "forward" one.
+    public const int WM_XBUTTONDOWN = 0x020B;
+    public const int WM_XBUTTONUP = 0x020C;
+    public const int XBUTTON1 = 0x0001;
+    public const int XBUTTON2 = 0x0002;
+
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     public const int DWMWA_BORDER_COLOR = 34;

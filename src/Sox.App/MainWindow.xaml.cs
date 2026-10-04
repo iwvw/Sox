@@ -742,6 +742,30 @@ public sealed partial class MainWindow : WindowEx
             return IntPtr.Zero;
         }
 
+        // The mouse's side buttons act as Back: while the action menu is open either side button closes
+        // it and returns to the result list (matching Esc / Left arrow), and while a keyword scope is
+        // active it leaves the scope. Both XBUTTON1 (the usual "back" side button) and XBUTTON2
+        // ("forward") do the same, since inside the spotlight there is no forward history to go to.
+        if (msg == NativeMethods.WM_XBUTTONUP)
+        {
+            var button = (int)((long)wParam >> 16) & 0xFFFF;
+            if (button is NativeMethods.XBUTTON1 or NativeMethods.XBUTTON2)
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_menuOpen)
+                    {
+                        CloseMenu();
+                    }
+                    else if (_scopeProvider is not null)
+                    {
+                        ExitScope();
+                    }
+                });
+                return IntPtr.Zero;
+            }
+        }
+
         if (msg == NativeMethods.WM_DPICHANGED)
         {
             var result = NativeMethods.CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
@@ -1074,7 +1098,7 @@ public sealed partial class MainWindow : WindowEx
 
     private const double SearchRowHeight = 56;
     private const double ResultItemHeight = 48;
-    private const double ActionItemHeight = 44;
+    private const double ActionItemHeight = 40;
     private const double ResultsHostPadding = 12;
     private const double EmptyStateHeight = 140;
     private const int DefaultWindowWidthDip = 720;
@@ -1135,7 +1159,8 @@ public sealed partial class MainWindow : WindowEx
                 cardHeight += 1;
                 if (_menuOpen)
                 {
-                    cardHeight += Math.Min(_actions.Count, MaxVisibleRows) * ActionItemHeight + ResultsHostPadding;
+                    // Every action is listed at once -- no scrolling -- so the card grows to fit them all.
+                    cardHeight += _actions.Count * ActionItemHeight + ResultsHostPadding;
                 }
                 else
                 {
@@ -1157,6 +1182,15 @@ public sealed partial class MainWindow : WindowEx
             var spotlightWidth = (int)Math.Round(WindowWidthDip * scale);
             var x = work.X + (work.Width - spotlightWidth) / 2;
             var y = work.Y + (int)Math.Round(work.Height * 0.20);
+
+            // The action menu lists every entry at once, so on a short screen the card can reach past
+            // the bottom edge. Slide it up just enough to keep the whole card on screen; never above
+            // the top (a card taller than the work area simply starts at the top and clips at the end).
+            var workBottom = work.Y + work.Height;
+            if (y + height > workBottom)
+            {
+                y = Math.Max(work.Y, workBottom - height);
+            }
 
             NativeMethods.SetWindowPos(
                 _hwnd,
@@ -1636,11 +1670,9 @@ public sealed partial class MainWindow : WindowEx
         _menuOpen = true;
 
         _actions.Clear();
-        var actions = BuildActions(item);
-        for (var i = 0; i < actions.Count; i++)
+        foreach (var action in BuildActions(item))
         {
-            actions[i].ShortcutText = i < 9 ? $"Ctrl+{i + 1}" : string.Empty;
-            _actions.Add(actions[i]);
+            _actions.Add(action);
         }
 
         ActionList.ItemsSource = _actions;
@@ -1672,12 +1704,9 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        var index = Math.Clamp(ActionList.SelectedIndex + delta, 0, _actions.Count - 1);
-        ActionList.SelectedIndex = index;
-
-        // The menu can now be taller than the visible rows (more actions than MaxVisibleRows), and the
-        // list scrolls internally, so keyboard navigation must follow the selection into view.
-        ActionList.ScrollIntoView(_actions[index]);
+        // The menu lists every action at once (no scrolling), so moving the selection never needs to
+        // scroll anything into view.
+        ActionList.SelectedIndex = Math.Clamp(ActionList.SelectedIndex + delta, 0, _actions.Count - 1);
     }
 
     private void ExecuteSelectedAction()
@@ -1703,6 +1732,15 @@ public sealed partial class MainWindow : WindowEx
         {
             ExecuteAction(action);
         }
+    }
+
+    // Right-click anywhere in the action menu is a Back gesture: it closes the menu and returns to the
+    // result list (the same as Esc / Left arrow / the mouse back button), rather than opening a menu of
+    // its own -- there is nothing to act on inside a menu.
+    private void ActionList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        CloseMenu();
+        e.Handled = true;
     }
 
     private List<ActionItem> BuildActions(ResultItem item)

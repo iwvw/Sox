@@ -156,14 +156,14 @@
                             <!--  Action menu view (replaces the list, same card surface)  -->
                             <ListView
                                 x:Name="ActionList"
-                                MaxHeight="444"
                                 Padding="2,6"
                                 IsItemClickEnabled="True"
                                 ItemClick="ActionList_ItemClick"
                                 ItemContainerStyle="{StaticResource ResultItemContainerStyle}"
                                 ItemTemplate="{StaticResource ActionItemTemplate}"
-                                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                ScrollViewer.VerticalScrollMode="Enabled"
+                                RightTapped="ActionList_RightTapped"
+                                ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                ScrollViewer.VerticalScrollMode="Disabled"
                                 SelectionMode="Single"
                                 Visibility="Collapsed">
                                 <ListView.ItemContainerTransitions>

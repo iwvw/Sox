@@ -104,11 +104,10 @@
             </DataTemplate>
 
             <DataTemplate x:Key="ActionItemTemplate">
-                <Grid Height="44" Padding="10,0,10,0" ColumnSpacing="12">
+                <Grid Height="40" Padding="10,0,10,0" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="52" />
                     </Grid.ColumnDefinitions>
 
                     <FontIcon
@@ -126,14 +125,6 @@
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         Text="{Binding Title}"
                         TextTrimming="CharacterEllipsis" />
-
-                    <TextBlock
-                        Grid.Column="2"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        FontSize="13"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{Binding ShortcutText}" />
                 </Grid>
             </DataTemplate>
         </ResourceDictionary>
