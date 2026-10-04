@@ -18,9 +18,6 @@ public class SearchEngine : IDisposable
     private MachineSettings _machineSettings = MachineSettings.Load();
     private readonly SearchEngineDriveMaintenance _drives;
 
-    // Search cancellation: one slot per directory filter (see SearchCancellationRegistry), replacing the
-    // previous pair of process-wide "latest wins" slots.
-    private readonly SearchCancellationRegistry _searchCancellations = new();
     private static readonly string IndexCacheDir = LocalDriveCacheLocator.DefaultCacheDir;
 
     private const long IdleTrimAfterMs = 3000;
@@ -150,9 +147,18 @@ public class SearchEngine : IDisposable
         if (string.IsNullOrWhiteSpace(query))
             return true;
 
-        // Supersedes only an earlier search of the same filter -- a multi-folder scope issues one request
-        // per folder concurrently, and a single shared slot made those cancel each other.
-        var searchCts = _searchCancellations.Begin(directoryFilter);
+        // No cross-request cancellation here on purpose. The App already cancels its own previous
+        // search when a new keystroke arrives, and that cancellation reaches this process as the
+        // request's own token: the client's read loop stops and its pipe is disposed, which
+        // SearchStreamPump's disconnect watchdog observes and turns into queryCts.Cancel(). A second,
+        // engine-side "a newer search supersedes the older one of the same filter" layer is not just
+        // redundant, it is wrong under the pipe's real ordering: the App opens a fresh named-pipe
+        // connection per search and the service accepts them on two listener loops plus the thread
+        // pool, so requests do not arrive in the order they were sent. An older request landing after
+        // a newer one used to cancel that newer search outright -- observed as searches that
+        // intermittently return nothing while the same query works on the next keystroke. The request
+        // token alone is the correct authority: it fires only for the request it belongs to.
+        var searchToken = requestToken;
 
         // Deliberately no "is the index ready" check. There used to be one, on the single GLOBAL status
         // field, and it skipped the search outright for anything other than "ready" -- so rebuilding one
@@ -171,23 +177,13 @@ public class SearchEngine : IDisposable
         // drive is missing from the results only while it genuinely has no index -- the brief window
         // inside OnDriveCompleted where the old one is dropped before the new one is mapped, or a
         // from-scratch first build (clearExisting: true), which really does have nothing to offer yet.
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(searchCts.Token, requestToken);
-        var searchToken = linkedCts.Token;
-
-        try
+        _indexer.SearchStreaming(query, fileLimit, result =>
         {
-            _indexer.SearchStreaming(query, fileLimit, result =>
-            {
-                searchToken.ThrowIfCancellationRequested();
-                onResult(result);
-            }, searchToken, directoryFilter, fileNameFilter);
+            searchToken.ThrowIfCancellationRequested();
+            onResult(result);
+        }, searchToken, directoryFilter, fileNameFilter);
 
-            return true;
-        }
-        finally
-        {
-            _searchCancellations.End(directoryFilter, searchCts);
-        }
+        return true;
     }
 
     // Directory listing straight off the index -- no query, no disk IO (see DirectoryEnumerator).
@@ -262,7 +258,6 @@ public class SearchEngine : IDisposable
         // these tokens while unwinding.
         _cts?.Cancel();
         _indexer.DisposeAllDriveMonitors();
-        _searchCancellations.CancelAll();
         _indexer.Dispose();
         GC.SuppressFinalize(this);
     }
