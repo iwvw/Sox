@@ -11,9 +11,9 @@ public static class InstallationDetector
         @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D37D0B75-B5E3-40D9-92EE-429C7D4D7F2A}_is1";
 
     /// <summary>
-    /// Returns <see cref="InstallationMode.Installed"/> only when Inno Setup registered this exact
-    /// executable. A copied installation therefore behaves as portable instead of inheriting the
-    /// original copy's machine-level state.
+    /// Returns <see cref="InstallationMode.Installed"/> only when this process is running from within
+    /// the directory Inno Setup registered. A copied installation therefore behaves as portable instead
+    /// of inheriting the original copy's machine-level state.
     /// </summary>
     public static InstallationMode Detect()
     {
@@ -37,14 +37,28 @@ public static class InstallationDetector
         }
     }
 
+    /// <summary>
+    /// Whether <paramref name="executablePath"/> lives anywhere under <paramref name="installLocation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Containment rather than "same directory": the install ships the service and hook under a
+    /// <c>Service\</c> subdirectory (see ADR-0020), so requiring the executable to sit directly in the
+    /// registered directory made every service/hook process detect itself as Portable -- it then kept
+    /// its index and machine settings under the install directory (Data\Machine) while the App, whose exe
+    /// is directly in the install root, correctly used the installed per-user/per-machine directories. A
+    /// copied install still fails this check because its executable is under a different root, which is
+    /// the property the direct-directory version was there to protect.
+    /// </remarks>
     internal static bool IsInstalledAt(string installLocation, string executablePath)
     {
         try
         {
-            return string.Equals(
-                Path.GetFullPath(Path.Combine(installLocation, Path.GetFileName(executablePath))),
-                Path.GetFullPath(executablePath),
-                StringComparison.OrdinalIgnoreCase);
+            var installRoot = Path.GetFullPath(installLocation);
+            if (!installRoot.EndsWith(Path.DirectorySeparatorChar))
+                installRoot += Path.DirectorySeparatorChar;
+
+            var executable = Path.GetFullPath(executablePath);
+            return executable.StartsWith(installRoot, StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {

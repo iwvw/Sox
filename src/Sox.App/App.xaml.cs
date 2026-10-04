@@ -19,7 +19,11 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-        Core.Logger.Initialize("app.log", Core.Logger.UserDataDir);
+        // Append across restarts (overwrite:false) instead of truncating: the whole point of this log in
+        // a self-hosted diagnostic tool is to see what the PREVIOUS run did -- truncating on every launch
+        // destroyed exactly that evidence the moment the user restarted to reproduce a problem. Logger
+        // still rolls over at 1 MB, so the file cannot grow without bound.
+        Core.Logger.Initialize("app.log", Core.Logger.UserDataDir, overwrite: false);
         CoreAliasBootstrap.Initialize();
         ThemeService = new ThemeService();
     }

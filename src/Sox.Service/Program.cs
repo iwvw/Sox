@@ -2,6 +2,8 @@
 
 using Sox.Core;
 
+using Sox.Core.Services.Installation;
+
 namespace Sox.Service;
 
 static class Program
@@ -18,13 +20,18 @@ static class Program
         var isHook = args.Length > 0 && args[0].Equals("--hook", StringComparison.OrdinalIgnoreCase);
         if (isHook)
         {
-            Logger.Initialize("hook.log", Logger.UserDataDir, overwrite: true);
+            Logger.Initialize("hook.log", Logger.UserDataDir, overwrite: false);
             Logger.Log("=========================================");
             Logger.Log($"Hook starting with arguments: {string.Join(" ", args)}");
         }
         else
         {
-            Logger.Initialize("service.log", Logger.SharedDataDir, overwrite: true);
+            Logger.Initialize("service.log", Logger.SharedDataDir, overwrite: false);
+            // Recover any index/settings a pre-fix service left under <install>\Service\Data because it
+            // mis-detected itself as Portable. Must run before MachineSettings.Load and before the
+            // engine loads its caches, so the recovered files are what those read.
+            Sox.Core.Services.Installation.MisplacedInstallDataMigrator.RecoverSharedData(
+                InstallationDetector.Detect(), AppContext.BaseDirectory, Logger.SharedDataDir);
             // Before the first line, so the level applies to everything this run writes. The service is
             // the one process that cannot read the per-user log-level setting -- it runs as LocalSystem
             // and that setting lives under the interactive user's %LocalAppData% -- so it had none at
