@@ -193,6 +193,11 @@ public sealed partial class MainWindow : WindowEx
             handledEventsToo: true);
     }
 
+    // Lets a result row be dragged straight out to Explorer or another drop target as a real file/folder
+    // (shared with the file-dialog panel -- see ResultDragDrop).
+    private void ResultList_DragItemsStarting(object sender, DragItemsStartingEventArgs e) =>
+        ResultDragDrop.OnDragItemsStarting(e);
+
     // ---- Preview pane (R3) ----
 
     private CancellationTokenSource? _previewCts;

@@ -138,6 +138,8 @@
                                 x:Name="ResultList"
                                 MaxHeight="444"
                                 Padding="2,6"
+                                CanDragItems="True"
+                                DragItemsStarting="ResultList_DragItemsStarting"
                                 IsItemClickEnabled="True"
                                 ItemClick="ResultList_ItemClick"
                                 ItemContainerStyle="{StaticResource ResultItemContainerStyle}"

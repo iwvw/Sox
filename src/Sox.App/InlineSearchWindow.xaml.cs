@@ -669,6 +669,13 @@ public sealed partial class InlineSearchWindow : WindowEx
         var index = ResultList.SelectedIndex;
         index = Math.Clamp(index < 0 ? 0 : index + delta, 0, _results.Count - 1);
         ResultList.SelectedIndex = index;
+
+        // Setting SelectedIndex does not bring the row on screen: past MaxVisibleRows the list scrolls
+        // internally (VerticalScrollMode is Enabled here, unlike the spotlight's self-managed window), so
+        // keyboard navigation down past the visible page left the selection moving off the bottom with
+        // the view stuck at the top. ScrollIntoView follows it, and works under virtualization where
+        // ContainerFromIndex would return null for a not-yet-realized row.
+        ResultList.ScrollIntoView(_results[index]);
     }
 
     private async Task RunSearchAsync()
@@ -751,6 +758,10 @@ public sealed partial class InlineSearchWindow : WindowEx
             Navigate(item);
         }
     }
+
+    // Same drag-out-to-Explorer support as the spotlight (shared helper -- see ResultDragDrop).
+    private void ResultList_DragItemsStarting(object sender, DragItemsStartingEventArgs e) =>
+        ResultDragDrop.OnDragItemsStarting(e);
 
     private void Navigate(ResultItem item)
     {
