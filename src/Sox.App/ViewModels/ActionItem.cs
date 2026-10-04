@@ -10,6 +10,14 @@ internal enum ResultAction
     CopyPath,
     CopyName,
     PinToFavorites,
+    OpenWith,
+    CopyFile,
+    CutFile,
+    DeleteToRecycleBin,
+    DeletePermanently,
+    Rename,
+    ShowProperties,
+    CopyFolderPath,
 }
 
 internal sealed class ActionItem : INotifyPropertyChanged

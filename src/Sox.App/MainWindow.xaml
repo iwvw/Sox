@@ -144,6 +144,7 @@
                                 ItemClick="ResultList_ItemClick"
                                 ItemContainerStyle="{StaticResource ResultItemContainerStyle}"
                                 ItemTemplate="{StaticResource ResultItemTemplate}"
+                                RightTapped="ResultList_RightTapped"
                                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                 ScrollViewer.VerticalScrollMode="Disabled"
                                 SelectionMode="Single">
@@ -161,8 +162,8 @@
                                 ItemClick="ActionList_ItemClick"
                                 ItemContainerStyle="{StaticResource ResultItemContainerStyle}"
                                 ItemTemplate="{StaticResource ActionItemTemplate}"
-                                ScrollViewer.VerticalScrollBarVisibility="Hidden"
-                                ScrollViewer.VerticalScrollMode="Disabled"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                ScrollViewer.VerticalScrollMode="Enabled"
                                 SelectionMode="Single"
                                 Visibility="Collapsed">
                                 <ListView.ItemContainerTransitions>

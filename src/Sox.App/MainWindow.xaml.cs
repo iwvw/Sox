@@ -1492,6 +1492,29 @@ public sealed partial class MainWindow : WindowEx
         }
     }
 
+    // Right-click on a result row opens the same action menu the keyboard Right arrow does, targeting the
+    // row under the pointer (not whatever was previously selected). Without this binding a right-click did
+    // nothing -- only the keyboard path could open the menu.
+    private void ResultList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        var item = FindResultItem(e.OriginalSource as DependencyObject);
+        if (item is null)
+        {
+            return;
+        }
+
+        // Move the selection to the clicked row so the menu (and any action that acts on "the selected
+        // item") targets what the user actually right-clicked.
+        var row = _visibleResults.IndexOf(item);
+        if (row >= 0)
+        {
+            ResultList.SelectedIndex = row;
+        }
+
+        OpenMenu(item);
+        e.Handled = true;
+    }
+
     private void Open(ResultItem item)
     {
         try
@@ -1651,6 +1674,10 @@ public sealed partial class MainWindow : WindowEx
 
         var index = Math.Clamp(ActionList.SelectedIndex + delta, 0, _actions.Count - 1);
         ActionList.SelectedIndex = index;
+
+        // The menu can now be taller than the visible rows (more actions than MaxVisibleRows), and the
+        // list scrolls internally, so keyboard navigation must follow the selection into view.
+        ActionList.ScrollIntoView(_actions[index]);
     }
 
     private void ExecuteSelectedAction()
@@ -1695,15 +1722,25 @@ public sealed partial class MainWindow : WindowEx
         {
             new(ResultAction.Open, "打开", "\uE8E5"),
             new(ResultAction.OpenContainingFolder, "打开所在文件夹", "\uE838"),
+            new(ResultAction.CopyFile, "复制", "\uE8C8"),
+            new(ResultAction.CutFile, "剪切", "\uE8C6"),
+            new(ResultAction.Rename, "重命名", "\uE8AC"),
             new(ResultAction.CopyPath, "复制完整路径", "\uE8C8"),
+            new(ResultAction.CopyFolderPath, "复制所在文件夹路径", "\uE8C8"),
             new(ResultAction.CopyName, "复制文件名", "\uE8C8"),
             new(ResultAction.PinToFavorites, "固定到收藏", "\uE734"),
+            new(ResultAction.DeleteToRecycleBin, "删除到回收站", "\uE74D"),
         };
 
         if (!item.IsDir)
         {
             actions.Insert(2, new ActionItem(ResultAction.RunAsAdmin, "以管理员身份运行", "\uE7EF"));
+            actions.Insert(3, new ActionItem(ResultAction.OpenWith, "打开方式…", "\uE7AC"));
         }
+
+        // Rarely-wanted, destructive, or informational entries go last.
+        actions.Add(new ActionItem(ResultAction.DeletePermanently, "永久删除", "\uE74D"));
+        actions.Add(new ActionItem(ResultAction.ShowProperties, "属性", "\uE946"));
 
         return actions;
     }
@@ -1733,8 +1770,16 @@ public sealed partial class MainWindow : WindowEx
                     RunAsAdmin(item);
                     break;
 
+                case ResultAction.OpenWith:
+                    OpenWith(item);
+                    break;
+
                 case ResultAction.CopyPath:
                     CopyToClipboard(item.Path);
+                    break;
+
+                case ResultAction.CopyFolderPath:
+                    CopyToClipboard(Path.GetDirectoryName(item.Path) ?? item.Path);
                     break;
 
                 case ResultAction.CopyName:
@@ -1743,6 +1788,34 @@ public sealed partial class MainWindow : WindowEx
 
                 case ResultAction.PinToFavorites:
                     PinToFavorites(item);
+                    break;
+
+                case ResultAction.CopyFile:
+                    Sox.PluginSdk.Shell.FileOperations.ShellClipboardHelper.SetCopy(new[] { item.Path });
+                    HideWindow();
+                    break;
+
+                case ResultAction.CutFile:
+                    Sox.PluginSdk.Shell.FileOperations.ShellClipboardHelper.SetCut(new[] { item.Path });
+                    HideWindow();
+                    break;
+
+                case ResultAction.Rename:
+                    _ = RenameAsync(item);
+                    return;
+
+                case ResultAction.DeleteToRecycleBin:
+                    Sox.PluginSdk.Shell.FileOperations.ShellDeleteHelper.DeleteAsync(new[] { item.Path }, permanent: false);
+                    HideWindow();
+                    break;
+
+                case ResultAction.DeletePermanently:
+                    Sox.PluginSdk.Shell.FileOperations.ShellDeleteHelper.DeleteAsync(new[] { item.Path }, permanent: true);
+                    HideWindow();
+                    break;
+
+                case ResultAction.ShowProperties:
+                    ShowProperties(item);
                     break;
             }
         }
@@ -1762,6 +1835,89 @@ public sealed partial class MainWindow : WindowEx
             UseShellExecute = true,
             Verb = "runas",
         });
+        HideWindow();
+    }
+
+    // The shell's own "Open with" chooser, via the documented OpenWith.exe launcher (the same dialog
+    // Explorer's context menu shows). Goes through the shell rather than enumerating verbs ourselves so
+    // the list and its "always use this app" checkbox stay exactly what the OS provides.
+    private void OpenWith(ResultItem item)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "OpenWith.exe"),
+                Arguments = $"\"{item.Path}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error("OpenWith failed", ex);
+        }
+
+        HideWindow();
+    }
+
+    // The shell's Properties dialog (the same one a right-click -> 属性 shows), via the "properties"
+    // verb. ShowWindow is hidden first so the dialog is not owned by a window that is about to cloak.
+    private void ShowProperties(ResultItem item)
+    {
+        HideWindow();
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = item.Path,
+                UseShellExecute = true,
+                Verb = "properties",
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ShowProperties failed", ex);
+        }
+    }
+
+    // Rename through the shell's IFileOperation so the change is a normal, undoable Explorer rename. The
+    // new name is collected with a ContentDialog first; an empty or unchanged name is a no-op.
+    private async Task RenameAsync(ResultItem item)
+    {
+        var current = Path.GetFileName(item.Path.TrimEnd(Path.DirectorySeparatorChar));
+        var box = new TextBox
+        {
+            Text = current,
+            SelectionStart = 0,
+            SelectionLength = current.Length,
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "重命名",
+            Content = box,
+            PrimaryButtonText = "确定",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = RootCard.XamlRoot,
+        };
+
+        // Close the action menu first: leaving it open keeps the list hidden and its own focus handling
+        // would fight the dialog for the keyboard.
+        CloseMenu();
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var newName = box.Text.Trim();
+        if (string.IsNullOrEmpty(newName) || string.Equals(newName, current, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Sox.PluginSdk.Shell.FileOperations.ShellRenameHelper.RenameAsync(item.Path, newName);
         HideWindow();
     }
 
