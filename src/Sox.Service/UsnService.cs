@@ -59,6 +59,21 @@ public class UsnService : ServiceBase
     protected override void OnStop()
     {
         Logger.Log("[UsnService] Service Stopping...");
+
+        // Ask the SCM for extra time up front. Disposing the engine joins each drive's monitor loop
+        // (bounded at 2s apiece) and terminates the hook process, so with several drives the teardown can
+        // approach the SCM's default 30s stop timeout -- and being killed mid-teardown is what leaves the
+        // service wedged in STOP_PENDING. A bounded extension here keeps a slow-but-correct stop from
+        // being mistaken for a hung one.
+        try
+        {
+            RequestAdditionalTime(15000);
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"[UsnService] RequestAdditionalTime failed: {ex.Message}", LogLevel.Warn);
+        }
+
         // Before anything else: the hook is another Sox.Service.exe process and keeps the install's
         // Service\Sox.Service.exe locked, which blocks an in-place update once the SCM reports STOPPED.
         try

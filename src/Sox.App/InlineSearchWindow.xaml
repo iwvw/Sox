@@ -9,11 +9,66 @@
     <controls:CardControl x:Name="RootCard" ShadowPadding="0" ShowShadow="False">
         <controls:CardControl.MainContent>
             <StackPanel x:Name="RootContent">
+                <StackPanel.Resources>
+                    <!--  Compact row for the docked panel: the spotlight's shared template is 48px tall
+                          with a 28px icon, which is too large for a strip that sits under a file dialog.
+                          Same bindings, smaller metrics, so the two never drift in content.  -->
+                    <DataTemplate x:Key="PanelResultItemTemplate">
+                        <Grid Height="40" Padding="10,0,10,0" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="22" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" Width="22" Height="22">
+                                <Image
+                                    Width="22"
+                                    Height="22"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Source="{Binding Icon}" />
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="15"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Glyph="{Binding Glyph}" />
+                            </Grid>
+
+                            <StackPanel
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="0">
+                                <controls:HighlightTextBlock
+                                    BaseFontSize="13"
+                                    NormalForeground="{ThemeResource TextFillColorPrimaryBrush}"
+                                    Emphasized="{Binding IsNameOnly}"
+                                    Query="{Binding Query}"
+                                    Text="{Binding Name}" />
+                                <TextBlock
+                                    FontSize="10"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="{Binding PathDisplay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{Binding HasSubtitle, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{Binding ShortcutText}" />
+                        </Grid>
+                    </DataTemplate>
+                </StackPanel.Resources>
                 <!--  Search row, mirroring the spotlight: icon + flat box + trailing actions.  -->
                 <Grid
-                    Height="40"
-                    Padding="12,0,8,0"
-                    ColumnSpacing="8">
+                    x:Name="SearchRow"
+                    Height="34"
+                    Padding="10,0,6,0"
+                    ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -25,7 +80,7 @@
                     <FontIcon
                         Grid.Column="0"
                         VerticalAlignment="Center"
-                        FontSize="14"
+                        FontSize="12"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Glyph="&#xE721;" />
 
@@ -33,7 +88,7 @@
                         x:Name="SearchBox"
                         Grid.Column="1"
                         VerticalAlignment="Center"
-                        FontSize="14"
+                        FontSize="12"
                         PlaceholderText="全盘搜索，回车跳转"
                         Style="{StaticResource SoxSearchBoxStyle}"
                         TextChanged="SearchBox_TextChanged" />
@@ -41,8 +96,8 @@
                     <Button
                         x:Name="FavoriteButton"
                         Grid.Column="2"
-                        Width="26"
-                        Height="26"
+                        Width="22"
+                        Height="22"
                         Padding="0"
                         VerticalAlignment="Center"
                         HorizontalContentAlignment="Center"
@@ -55,15 +110,15 @@
                             x:Name="FavoriteGlyph"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            FontSize="13"
+                            FontSize="11"
                             Glyph="&#xE734;" />
                     </Button>
 
                     <Button
                         x:Name="HistoryButton"
                         Grid.Column="3"
-                        Width="26"
-                        Height="26"
+                        Width="22"
+                        Height="22"
                         Padding="0"
                         VerticalAlignment="Center"
                         HorizontalContentAlignment="Center"
@@ -76,15 +131,15 @@
                             x:Name="HistoryGlyph"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            FontSize="13"
+                            FontSize="11"
                             Glyph="&#xE81C;" />
                     </Button>
 
                     <Button
                         x:Name="ToolsButton"
                         Grid.Column="4"
-                        Width="26"
-                        Height="26"
+                        Width="22"
+                        Height="22"
                         Padding="0"
                         VerticalAlignment="Center"
                         HorizontalContentAlignment="Center"
@@ -95,7 +150,7 @@
                         <FontIcon
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            FontSize="13"
+                            FontSize="11"
                             Glyph="&#xE712;" />
                         <Button.Flyout>
                             <MenuFlyout x:Name="ToolsFlyout">
@@ -122,24 +177,31 @@
 
                 <Border
                     x:Name="ResultsDivider"
-                    BorderBrush="{ThemeResource Sox.DividerBrush}"
-                    BorderThickness="0,1,0,0"
+                    Height="1"
+                    Background="{ThemeResource Sox.DividerBrush}"
                     Visibility="Collapsed" />
 
                 <ListView
                     x:Name="ResultList"
-                    MaxHeight="336"
-                    Padding="2,4"
+                    MaxHeight="280"
+                    Padding="2,3"
                     CanDragItems="True"
                     DragItemsStarting="ResultList_DragItemsStarting"
                     IsItemClickEnabled="True"
                     ItemClick="ResultList_ItemClick"
                     ItemContainerStyle="{StaticResource ResultItemContainerStyle}"
-                    ItemTemplate="{StaticResource ResultItemTemplate}"
+                    ItemTemplate="{StaticResource PanelResultItemTemplate}"
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                     ScrollViewer.VerticalScrollMode="Enabled"
                     SelectionMode="Single"
-                    Visibility="Collapsed" />
+                    Visibility="Collapsed">
+                    <!--  Same as the spotlight: the default add/remove/reorder item transitions animate
+                          every row on each Clear+repopulate, which reads as a flicker on the docked panel
+                          (it rebuilds its list several times per jump).  -->
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
+                </ListView>
             </StackPanel>
         </controls:CardControl.MainContent>
     </controls:CardControl>

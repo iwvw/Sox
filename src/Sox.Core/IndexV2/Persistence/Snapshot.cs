@@ -70,6 +70,7 @@ public sealed unsafe class Snapshot : IDisposable
                 throw new InvalidDataException($"Snapshot file is truncated: header requires {totalLength} bytes but the file holds only {stream.Length}.");
 
             ValidateNameOffsets();
+            ValidateIndexColumns();
         }
         catch
         {
@@ -100,6 +101,70 @@ public sealed unsafe class Snapshot : IDisposable
             if (offsets[i] < offsets[i - 1] || offsets[i] > blobLength)
                 throw new InvalidDataException(
                     $"Snapshot {SourceKey}: name offset {i} ({offsets[i]}) is out of order or past the {blobLength}-byte name blob.");
+        }
+    }
+
+    /// <summary>
+    /// Validates the offset columns that are dereferenced as raw spans, so a corrupted or torn
+    /// same-length snapshot fails at OPEN (recoverable: the caller drops the cache and rescans) instead
+    /// of during a query as an uncatchable access violation. The checks mirror the invariants the writer
+    /// guarantees: each "<c>Starts</c>" column is non-decreasing, its last entry equals the corresponding
+    /// length, and every row index stored elsewhere is within [0, Count).
+    /// </summary>
+    private void ValidateIndexColumns()
+    {
+        ValidateStartsColumn(ChildStartsColumn, Count + 1, Meta.ChildrenLength, "child");
+        ValidateStartsColumn(UidStartsColumn, UniqueCount + 1, Count, "uid row");
+        ValidateStartsColumn(AliasStartsColumn, UniqueCount + 1, Meta.AliasEntryCount, "alias");
+        ValidateStartsColumn(AliasEntryOffsetsColumn, Meta.AliasEntryCount + 1, Meta.AliasBlobLength, "alias entry");
+
+        // ParentIndexes legitimately holds -1 for a root; any other out-of-range value would make
+        // GetParentId/GetFullPath index a section out of bounds. NameIds must stay a valid unique-name
+        // index so GetName never walks off NameOffsets/NameBlob.
+        var parents = ParentIndexes;
+        var names = NameIds;
+        for (var row = 0; row < parents.Length; row++)
+        {
+            var parent = parents[row];
+            if (parent < -1 || parent >= Count)
+                throw new InvalidDataException($"Snapshot {SourceKey}: parent index {row} ({parent}) is out of range.");
+
+            if (names[row] >= (uint)UniqueCount)
+                throw new InvalidDataException($"Snapshot {SourceKey}: name id {row} ({names[row]}) is out of range.");
+        }
+    }
+
+    // Section headers for the two columns validated on open. Same shapes the accessors construct inline.
+    private ReadOnlySpan<int> ChildStartsColumn => new(Section(SnapshotSection.ChildStarts), Count + 1);
+    private ReadOnlySpan<int> UidStartsColumn => new(Section(SnapshotSection.UidStarts), UniqueCount + 1);
+    private ReadOnlySpan<int> AliasStartsColumn => new(Section(SnapshotSection.AliasStarts), UniqueCount + 1);
+    private ReadOnlySpan<uint> AliasEntryOffsetsColumn => new(Section(SnapshotSection.AliasEntryOffsets), Meta.AliasEntryCount + 1);
+
+    private void ValidateStartsColumn(ReadOnlySpan<int> starts, int expectedLength, int maxValue, string label)
+    {
+        if (starts.Length != expectedLength)
+            throw new InvalidDataException($"Snapshot {SourceKey}: {label} start column has {starts.Length} entries, expected {expectedLength}.");
+        if (starts[0] != 0)
+            throw new InvalidDataException($"Snapshot {SourceKey}: {label} start column does not start at 0.");
+        for (var i = 1; i < starts.Length; i++)
+        {
+            if (starts[i] < starts[i - 1] || starts[i] > maxValue)
+                throw new InvalidDataException(
+                    $"Snapshot {SourceKey}: {label} start {i} ({starts[i]}) is out of order or past {maxValue}.");
+        }
+    }
+
+    private void ValidateStartsColumn(ReadOnlySpan<uint> starts, int expectedLength, int maxValue, string label)
+    {
+        if (starts.Length != expectedLength)
+            throw new InvalidDataException($"Snapshot {SourceKey}: {label} start column has {starts.Length} entries, expected {expectedLength}.");
+        if (starts[0] != 0)
+            throw new InvalidDataException($"Snapshot {SourceKey}: {label} start column does not start at 0.");
+        for (var i = 1; i < starts.Length; i++)
+        {
+            if (starts[i] < starts[i - 1] || starts[i] > (uint)maxValue)
+                throw new InvalidDataException(
+                    $"Snapshot {SourceKey}: {label} start {i} ({starts[i]}) is out of order or past {maxValue}.");
         }
     }
 

@@ -11,6 +11,7 @@ using Sox.App.ViewModels;
 using IQueryProvider = Sox.App.Services.QueryProviders.IQueryProvider;
 using Sox.Core;
 using Sox.Core.Indexer.Usn;
+using Sox.Core.Wire;
 using Windows.System;
 using Windows.UI;
 using WinUIEx;
@@ -89,6 +90,7 @@ public sealed partial class MainWindow : WindowEx
 
         _ = InitializeAsync();
         _ = AutoCheckUpdatesAsync();
+        StartServiceWatchdog();
 
         // Start the file-dialog integration: connects to the hook process (launched on demand via the
         // service) that owns the global keyboard/mouse hooks and Explorer/dialog tracking. Quick Switch
@@ -827,7 +829,60 @@ public sealed partial class MainWindow : WindowEx
     // the pipe before the service answered, timing out on the first show).
     private Task<bool>? _serviceReady;
 
-    private Task<bool> EnsureServiceReadyAsync() => _serviceReady ??= _searchHost.EnsureServiceAsync();
+    // A FAILED readiness result is not cached: if the first bootstrap could not reach the service (it was
+    // still starting, or crashed), a later caller must be free to try again rather than inherit a
+    // permanent false. A successful result stays cached to keep the common path cheap.
+    private Task<bool> EnsureServiceReadyAsync()
+    {
+        if (_serviceReady is { IsCompletedSuccessfully: true, Result: true })
+        {
+            return _serviceReady;
+        }
+
+        _serviceReady = _searchHost.EnsureServiceAsync();
+        return _serviceReady;
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _serviceWatchdog;
+
+    // Polls the service so a crash that no one noticed does not leave search dead for the rest of the
+    // session. The service has SCM restart-on-failure configured, but that only covers a hard process
+    // exit; a service that stopped for any other reason (manual stop, failed start) would otherwise stay
+    // down until the next App launch. On a failed ping this re-runs the bootstrap and resubscribes.
+    private void StartServiceWatchdog()
+    {
+        _serviceWatchdog = DispatcherQueue.CreateTimer();
+        _serviceWatchdog.Interval = TimeSpan.FromSeconds(20);
+        _serviceWatchdog.IsRepeating = true;
+        _serviceWatchdog.Tick += async (_, _) => await WatchdogPingAsync();
+        _serviceWatchdog.Start();
+    }
+
+    private async Task WatchdogPingAsync()
+    {
+        try
+        {
+            if (await _searchHost.Service.PingAsync())
+            {
+                return;
+            }
+        }
+        catch
+        {
+            // Treat any transport failure as "service is gone" and try to bring it back.
+        }
+
+        Log.Warning("Service watchdog: SoxService did not respond; attempting to restart it.");
+        _serviceReady = null;
+        if (await EnsureServiceReadyAsync())
+        {
+            Log.Info("Service watchdog: SoxService is back.");
+            var cts = new CancellationTokenSource();
+            _statusCts?.Cancel();
+            _statusCts = cts;
+            _ = Task.Run(() => _searchHost.SubscribeStatusAsync(OnIndexStatus, cts.Token));
+        }
+    }
 
     private void OnIndexStatus(UsnIndexer.IndexerStatus status)
     {
@@ -893,6 +948,9 @@ public sealed partial class MainWindow : WindowEx
             PushSearchContext(settings);
             _tray.Show(!settings.HideTrayIcon);
             ApplySummonHotkey(settings.SummonHotkey);
+            // The hook owns the global Quick Switch / Quick Panel keys and caches UserSettings at startup;
+            // without this an edited hotkey would not take effect until the hook restarts.
+            _hookIpc.SendMessage(new IpcMessage { Id = IpcMessageId.ReloadSettings });
             // Re-assert the Run command only when autostart is already on (so a changed "start
             // minimized" preference is picked up) -- never re-enable an entry the user removed.
             StartupService.RefreshIfEnabled();
@@ -2313,6 +2371,7 @@ public sealed partial class MainWindow : WindowEx
     {
         try
         {
+            _serviceWatchdog?.Stop();
             NativeMethods.UnregisterHotKey(_hwnd, 1);
             if (_originalWndProc != IntPtr.Zero)
             {

@@ -16,12 +16,20 @@
                     KeyDown="OnSummonHotkeyKeyDown" />
             </controls:SettingsCard>
 
+            <controls:SettingsCard Description="在文件对话框内按下，跳回最近浏览的资源管理器目录" Header="快速跳转（Quick Switch）">
+                <TextBox
+                    x:Name="QuickSwitchHotkeyBox"
+                    MinWidth="220"
+                    IsReadOnly="True"
+                    KeyDown="OnQuickSwitchHotkeyKeyDown" />
+            </controls:SettingsCard>
+
             <controls:SettingsCard Description="全屏游戏或应用在前台时忽略呼出热键" Header="在全屏游戏和应用中禁用">
                 <ToggleSwitch x:Name="FullscreenToggle" Toggled="OnFullscreenToggled" />
             </controls:SettingsCard>
 
-            <controls:SettingsCard Description="恢复默认 Alt+Space" Header="重置">
-                <Button Click="OnResetSummon" Content="重置为 Alt+Space" />
+            <controls:SettingsCard Description="恢复默认 Alt+Space / Ctrl+G" Header="重置">
+                <Button Click="OnResetHotkeys" Content="重置为默认" />
             </controls:SettingsCard>
 
         </StackPanel>

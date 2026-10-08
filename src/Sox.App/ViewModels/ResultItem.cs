@@ -90,10 +90,22 @@ internal sealed class ResultItem : INotifyPropertyChanged
     }
 
     // An instant result shows its description (open hint / result kind) as the second line; a file shows
-    // the containing folder.
-    public string PathDisplay => Instant is not null
+    // the containing folder. A caller (the docked panel's "suggested recent folder" row) can override it.
+    public string PathDisplay => _subtitleOverride ?? (Instant is not null
         ? Instant.Description
-        : IsDir ? Path : System.IO.Path.GetDirectoryName(Path) ?? Path;
+        : IsDir ? Path : System.IO.Path.GetDirectoryName(Path) ?? Path);
+
+    private string? _subtitleOverride;
+
+    /// <summary>Replaces the second line with a caller-chosen hint (e.g. "最近浏览"). Null restores the
+    /// default derived subtitle.</summary>
+    public void SetSubtitleOverride(string? subtitle)
+    {
+        _subtitleOverride = subtitle;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PathDisplay)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsNameOnly)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasSubtitle)));
+    }
 
     // True when there is nothing to show on the second line (a bare application with no description).
     // The template then drops the subtitle row and centres the name at a larger size, so an app-only

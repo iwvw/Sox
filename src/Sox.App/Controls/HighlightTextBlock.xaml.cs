@@ -36,6 +36,13 @@ public sealed partial class HighlightTextBlock : UserControl
             typeof(HighlightTextBlock),
             new PropertyMetadata(false, OnEmphasisChanged));
 
+    public static readonly DependencyProperty BaseFontSizeProperty =
+        DependencyProperty.Register(
+            nameof(BaseFontSize),
+            typeof(double),
+            typeof(HighlightTextBlock),
+            new PropertyMetadata(14.0, OnBaseFontSizeChanged));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -61,11 +68,30 @@ public sealed partial class HighlightTextBlock : UserControl
         set => SetValue(EmphasizedProperty, value);
     }
 
+    /// <summary>Normal (non-emphasized) text size. The panel uses a smaller value than the spotlight's
+    /// default so its compact rows fit the docked strip.</summary>
+    public double BaseFontSize
+    {
+        get => (double)GetValue(BaseFontSizeProperty);
+        set => SetValue(BaseFontSizeProperty, value);
+    }
+
     private static void OnEmphasisChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var control = (HighlightTextBlock)d;
-        control.Inner.FontSize = (bool)e.NewValue ? 16 : 14;
-        control.Inner.FontWeight = (bool)e.NewValue
+        control.ApplyFont();
+    }
+
+    private static void OnBaseFontSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var control = (HighlightTextBlock)d;
+        control.ApplyFont();
+    }
+
+    private void ApplyFont()
+    {
+        Inner.FontSize = Emphasized ? BaseFontSize + 2 : BaseFontSize;
+        Inner.FontWeight = Emphasized
             ? Microsoft.UI.Text.FontWeights.SemiBold
             : Microsoft.UI.Text.FontWeights.Normal;
     }
@@ -74,6 +100,7 @@ public sealed partial class HighlightTextBlock : UserControl
     {
         InitializeComponent();
         Inner.Foreground = NormalForeground;
+        ApplyFont();
     }
 
     private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>

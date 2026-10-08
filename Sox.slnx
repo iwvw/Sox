@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Sox.App/Sox.App.csproj" />
   </Folder>
+  <Folder Name="/src/Plugins/">
+    <Project Path="src/Plugins/PinyinAlias/PinyinAlias.csproj" />
+  </Folder>
   <Folder Name="/src/Sox.Core/">
     <Project Path="src/Sox.Core/Core.csproj" />
   </Folder>
@@ -10,5 +13,8 @@
   </Folder>
   <Folder Name="/src/Sox.Service/">
     <Project Path="src/Sox.Service/Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sox.Core.Tests/Sox.Core.Tests.csproj" />
   </Folder>
 </Solution>

@@ -18,6 +18,7 @@ public sealed partial class HotkeyPage : Page
         _settings = UserSettings.Load();
         InitializeComponent();
         SummonHotkeyBox.Text = _settings.SummonHotkey;
+        QuickSwitchHotkeyBox.Text = _settings.Hotkeys.QuickSwitchHotkey;
         FullscreenToggle.IsOn = _settings.DisableHotkeyInFullscreen;
     }
 
@@ -30,21 +31,39 @@ public sealed partial class HotkeyPage : Page
 
     private void OnSummonHotkeyKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (TryRecord(e, out var text))
+        {
+            _settings.SummonHotkey = text;
+            SaveAndSync();
+        }
+    }
+
+    private void OnQuickSwitchHotkeyKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (TryRecord(e, out var text))
+        {
+            _settings.Hotkeys.QuickSwitchHotkey = text;
+            SaveAndSync();
+        }
+    }
+
+    // Shared recorder: consumes the key, ignores bare modifiers, maps Backspace to "clear", and rejects a
+    // combo with no modifier. The recorded text uses the same flat format HotkeyParser/ParseCombo read.
+    private bool TryRecord(KeyRoutedEventArgs e, out string text)
+    {
         e.Handled = true;
+        text = string.Empty;
 
         var key = e.Key;
         if (key is VirtualKey.Control or VirtualKey.Menu or VirtualKey.Shift
             or VirtualKey.LeftWindows or VirtualKey.RightWindows)
         {
-            return;
+            return false;
         }
 
         if (key == VirtualKey.Back)
         {
-            SummonHotkeyBox.Text = string.Empty;
-            _settings.SummonHotkey = string.Empty;
-            SaveAndSync();
-            return;
+            return true;
         }
 
         var ctrl = IsDown(VirtualKey.Control);
@@ -55,24 +74,23 @@ public sealed partial class HotkeyPage : Page
         if (!ctrl && !alt && !shift && !win)
         {
             _ = ShowMessageAsync("热键无效", "请至少包含一个修饰键（Ctrl / Alt / Shift / Win）。");
-            return;
+            return false;
         }
 
-        var text = HotkeyParser.Format(key, ctrl, alt, shift, win);
+        text = HotkeyParser.Format(key, ctrl, alt, shift, win);
         if (!HotkeyParser.TryParse(text, out _, out _))
         {
             _ = ShowMessageAsync("热键无效", $"无法识别组合键：{text}");
-            return;
+            return false;
         }
 
-        SummonHotkeyBox.Text = text;
-        _settings.SummonHotkey = text;
-        SaveAndSync();
+        return true;
     }
 
-    private void OnResetSummon(object sender, RoutedEventArgs e)
+    private void OnResetHotkeys(object sender, RoutedEventArgs e)
     {
         _settings.SummonHotkey = "Alt+Space";
+        _settings.Hotkeys.QuickSwitchHotkey = "Ctrl+G";
         SaveAndSync();
     }
 
@@ -86,6 +104,7 @@ public sealed partial class HotkeyPage : Page
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
         SummonHotkeyBox.Text = _settings.SummonHotkey;
+        QuickSwitchHotkeyBox.Text = _settings.Hotkeys.QuickSwitchHotkey;
     }
 
     private async Task ShowMessageAsync(string title, string message)

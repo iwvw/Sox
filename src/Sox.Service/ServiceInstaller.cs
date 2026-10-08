@@ -49,6 +49,15 @@ static class ServiceInstaller
             if (!sdset.IsSuccess(0))
                 Logger.Log("[ServiceInstaller] Service was created but sdset failed; non-admin start/stop may require elevation.", LogLevel.Warn);
 
+            // Configure SCM recovery so a crashed service restarts on its own. Without this the SCM's
+            // default recovery action is "take no action", so any unhandled exception in the service left
+            // it dead until the next reboot -- and nothing else restarts it (the App caches its readiness
+            // result). Three escalating delays, then reset the failure counter after a day of uptime.
+            Logger.Log("Configuring service recovery actions.");
+            var failure = ServiceControlRunner.Run("failure SoxService reset= 86400 actions= restart/5000/restart/15000/restart/60000");
+            if (!failure.IsSuccess(0))
+                Logger.Log("[ServiceInstaller] sc failure failed; the service will not auto-restart after a crash.", LogLevel.Warn);
+
             Logger.Log("Starting service: sc.exe start SoxService");
             var start = ServiceControlRunner.Run("start SoxService", 0, 1056);
             if (!start.IsSuccess(0, 1056))

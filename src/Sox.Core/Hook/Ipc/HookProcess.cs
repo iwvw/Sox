@@ -188,7 +188,7 @@ public sealed class HookProcess : IDisposable
     {
         _ipcServer = ipcServer;
         _commandHandler = new HookCommandHandler(this);
-        _openedFolderSnapshots = new OpenedFolderSnapshotPublisher(_ipcServer);
+        _openedFolderSnapshots = new OpenedFolderSnapshotPublisher(_ipcServer, () => _explorerTracker?.LastActiveExplorerPath);
 
         _ipcServer.OnStopRequested += () => Stop();
         _ipcServer.OnCommandReceived += _commandHandler.HandleAppCommand;

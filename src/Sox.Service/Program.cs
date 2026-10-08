@@ -11,13 +11,20 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        // Set up global exception handlers
-        AppDomain.CurrentDomain.UnhandledException += (s, e) => Logger.Log($"CRITICAL SERVICE UNHANDLED EXCEPTION:\n{e.ExceptionObject}", LogLevel.Error);
+        var isHook = args.Length > 0 && args[0].Equals("--hook", StringComparison.OrdinalIgnoreCase);
+
+        // Register the crash handler BEFORE anything else, but do not rely on Logger: it is not
+        // initialized yet, and Logger.Log silently drops (empty path) if a crash lands in the window
+        // between registration and Initialize. Write straight to the file this run will use, so an
+        // exception during startup still leaves evidence. (AppDomain.UnhandledException cannot keep the
+        // process alive; it only records.)
+        var crashLogPath = Path.Combine(isHook ? Logger.UserDataDir : Logger.SharedDataDir, isHook ? "hook.log" : "service.log");
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            WriteCrash(crashLogPath, $"CRITICAL {(isHook ? "HOOK" : "SERVICE")} UNHANDLED EXCEPTION:\n{e.ExceptionObject}");
 
         // Wire up plugin logger to the core logger
         PluginSdk.Logger.LogAction = (msg, lvl) => Logger.Log(msg, (LogLevel)(int)lvl);
 
-        var isHook = args.Length > 0 && args[0].Equals("--hook", StringComparison.OrdinalIgnoreCase);
         if (isHook)
         {
             Logger.Initialize("hook.log", Logger.UserDataDir, overwrite: false);
@@ -86,6 +93,20 @@ static class Program
         };
         quitEvent.WaitOne();
         service.Stop();
+    }
+
+    // Best-effort direct write, independent of Logger state. Never throws: a crash handler that throws
+    // would replace the real exception with its own.
+    private static void WriteCrash(string logPath, string message)
+    {
+        try
+        {
+            var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [Error] {message}\n";
+            File.AppendAllText(logPath, line);
+        }
+        catch
+        {
+        }
     }
 }
 

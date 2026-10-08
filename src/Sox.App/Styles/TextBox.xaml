@@ -30,7 +30,7 @@
                         <Grid Grid.Column="0">
                             <TextBlock
                                 x:Name="PlaceholderTextContentPresenter"
-                                Margin="0,-3,0,0"
+                                Margin="{Binding FontSize, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource SearchTextMarginConverter}}"
                                 Padding="{TemplateBinding Padding}"
                                 VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                 Foreground="{ThemeResource TextControlPlaceholderForeground}"
@@ -40,7 +40,7 @@
                                 Visibility="Collapsed" />
                             <ScrollViewer
                                 x:Name="ContentElement"
-                                Margin="0,-3,0,0"
+                                Margin="{Binding FontSize, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource SearchTextMarginConverter}}"
                                 Padding="{TemplateBinding Padding}"
                                 VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                 AutomationProperties.AccessibilityView="Raw"

@@ -23,7 +23,7 @@ public sealed partial class InlineSearchWindow : WindowEx
 {
     private const int MaxVisibleRows = 7;
     private const int MaxResults = 60;
-    private const int RowHeightDip = 48;
+    private const int RowHeightDip = 40;
 
     private readonly SearchHost _searchHost;
     private readonly HookIpcClient _hookIpc;
@@ -39,6 +39,8 @@ public sealed partial class InlineSearchWindow : WindowEx
     private bool _shown;
     private EmptyListMode _emptyMode = EmptyListMode.OpenFolders;
     private readonly List<string> _openedFolders = [];
+    private string? _suggestedFolder;
+    private string _quickSwitchHotkey = "Ctrl+G";
 
     // What the empty-query list shows: the Quick Switch targets (other open Explorer folders), the
     // recently opened folders, or the user's pinned favorites.
@@ -81,12 +83,18 @@ public sealed partial class InlineSearchWindow : WindowEx
 
         // Same material engine as the spotlight card, so the panel matches it. Stretch and theme are
         // applied on Loaded, exactly like MainWindow: SetCardStretch before the control is loaded does not
-        // take effect.
+        // take effect. The ActualThemeChanged / ThemeChanged re-applies are what MainWindow relies on too:
+        // setting RequestedTheme takes effect asynchronously, so the first ApplyBackdrop (right after
+        // RequestedTheme is set) resolves the OLD theme, and only the follow-up call made from
+        // ActualThemeChanged configures the acrylic/Mica controller with the correct light/dark theme.
+        // Without them the panel kept a material tinted for the wrong theme -- most obvious in light mode.
         RootCard.Loaded += (_, _) =>
         {
             RootCard.SetCardStretch(true);
             ApplyTheme();
         };
+        RootCard.ActualThemeChanged += (_, _) => ApplyTheme();
+        _themeService.ThemeChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplyTheme);
 
         _debounce = DispatcherQueue.CreateTimer();
         _debounce.Interval = TimeSpan.FromMilliseconds(30);
@@ -166,18 +174,33 @@ public sealed partial class InlineSearchWindow : WindowEx
     public void ShowForDialog(IntPtr dialogHwnd, string folder)
     {
         var sameDialog = _dialogHwnd == dialogHwnd;
+        var previousFolder = _folder;
         _dialogHwnd = dialogHwnd;
         if (!string.IsNullOrWhiteSpace(folder))
         {
             _folder = folder;
         }
 
+        var folderChanged = !string.Equals(
+            previousFolder.TrimEnd('\\'), _folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+
         // The hook re-reports the same dialog (path polling, focus changes). Only the first report should
         // reset the box and take focus; a repeat must leave the user's typing and caret alone, or the
-        // panel fights the keyboard on every poll.
+        // panel fights the keyboard on every poll. When the folder actually changed (the user navigated
+        // the dialog, e.g. by picking a row here), refresh the open-folder list so it reflects the new
+        // location instead of the one we just left.
         if (sameDialog && _shown)
         {
             UpdateToggleGlyphs();
+            if (folderChanged)
+            {
+                RequestOpenedFolders();
+                if (string.IsNullOrEmpty(SearchBox.Text))
+                {
+                    ShowOpenedFolders();
+                }
+            }
+
             Reposition();
             return;
         }
@@ -219,6 +242,7 @@ public sealed partial class InlineSearchWindow : WindowEx
         SearchBox.Text = string.Empty;
         _suppressTextChanged = false;
         _emptyMode = EmptyListMode.OpenFolders;
+        _quickSwitchHotkey = LoadQuickSwitchHotkey();
         UpdateToggleGlyphs();
         ShowOpenedFolders();
         Reposition();
@@ -231,6 +255,10 @@ public sealed partial class InlineSearchWindow : WindowEx
 
     private void OnOpenedFolders(IReadOnlyList<string> folders)
     {
+        // The hook lists the most-recently-browsed folder first (the Quick Switch target). Remember it so
+        // ShowOpenedFolders can label exactly that row, and only if it survives the current-folder filter.
+        _suggestedFolder = folders.Count > 0 ? folders[0] : null;
+
         _openedFolders.Clear();
         foreach (var f in folders)
         {
@@ -253,6 +281,19 @@ public sealed partial class InlineSearchWindow : WindowEx
     // so this is how the list stays current.
     private void RequestOpenedFolders() =>
         _hookIpc.SendMessage(new IpcMessage { Id = IpcMessageId.RequestOpenedFolders });
+
+    private static string LoadQuickSwitchHotkey()
+    {
+        try
+        {
+            var hotkey = Sox.Core.UserSettings.Load().Hotkeys.QuickSwitchHotkey;
+            return string.IsNullOrWhiteSpace(hotkey) ? "Ctrl+G" : hotkey;
+        }
+        catch
+        {
+            return "Ctrl+G";
+        }
+    }
 
     private void RequestOpenedFoldersIfVisible()
     {
@@ -287,6 +328,17 @@ public sealed partial class InlineSearchWindow : WindowEx
             var item = new ResultItem(result, string.Empty);
             item.RequestIcon(DispatcherQueue, 48);
             _results.Add(item);
+        }
+
+        // In the open-folders view the hook puts the folder the user most recently browsed outside this
+        // dialog first -- the same destination Quick Switch jumps to. Label it as a suggestion and show
+        // its shortcut on the right, matching the suggestion cue Listary uses.
+        if (_emptyMode == EmptyListMode.OpenFolders && _results.Count > 0
+            && !string.IsNullOrWhiteSpace(_suggestedFolder)
+            && string.Equals(_results[0].Path.TrimEnd('\\'), _suggestedFolder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+        {
+            _results[0].SetSubtitleOverride("最近浏览");
+            _results[0].ShortcutText = string.IsNullOrWhiteSpace(_quickSwitchHotkey) ? "Ctrl+G" : _quickSwitchHotkey;
         }
 
         ResultList.SelectedIndex = _results.Count > 0 ? 0 : -1;
@@ -351,6 +403,26 @@ public sealed partial class InlineSearchWindow : WindowEx
         var hasResults = _results.Count > 0;
         ResultsDivider.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
         ResultList.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Reorders the root StackPanel so the results sit either below the search box (normal) or above it
+    // (when the dialog is near the bottom of the screen). The divider always stays between the two.
+    private void SetListAbove(bool listAbove)
+    {
+        var want = listAbove
+            ? new UIElement[] { ResultList, ResultsDivider, SearchRow }
+            : new UIElement[] { SearchRow, ResultsDivider, ResultList };
+
+        for (var i = 0; i < want.Length; i++)
+        {
+            var child = want[i];
+            var current = RootContent.Children.IndexOf(child);
+            if (current != i)
+            {
+                RootContent.Children.RemoveAt(current);
+                RootContent.Children.Insert(i, child);
+            }
+        }
     }
 
     // The star shows the pinned favorites in the empty-query list; clicking it again returns to the
@@ -497,6 +569,8 @@ public sealed partial class InlineSearchWindow : WindowEx
         // panel would never come back after the user switched away and returned.
         _shown = false;
         _dialogHwnd = IntPtr.Zero;
+        // Force the next show to issue a real SetWindowPos even if it lands on the same geometry.
+        _lastPosition = null;
     }
 
     public void FocusBox()
@@ -545,10 +619,10 @@ public sealed partial class InlineSearchWindow : WindowEx
         // edge controls. The card is narrower than the dialog (Listary's panel is a compact strip, not a
         // full-width bar) and centred under it, flush with its bottom edge.
         var dialogWidthPx = rect.Right - rect.Left;
-        var widthPx = (int)Math.Round(dialogWidthPx * 0.62);
-        if (widthPx < 360)
+        var widthPx = (int)Math.Round(dialogWidthPx * 0.55);
+        if (widthPx < 320)
         {
-            widthPx = 360;
+            widthPx = 320;
         }
 
         if (widthPx > dialogWidthPx)
@@ -565,9 +639,15 @@ public sealed partial class InlineSearchWindow : WindowEx
         if (monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info))
         {
             var work = info.rcWork;
-            if (y + heightPx > work.Bottom)
+
+            // Keep the SEARCH ROW anchored just under the dialog and let the results grow away from it.
+            // When the panel does not fit below the dialog, flip the list ABOVE the box instead of
+            // sliding the whole panel up -- moving the panel is what used to drag the input box into the
+            // middle of the dialog. Flipped, the box still sits flush with the dialog's bottom edge.
+            var fitsBelow = y + heightPx <= work.Bottom;
+            SetListAbove(!fitsBelow);
+            if (!fitsBelow)
             {
-                // No room below the dialog: hang the card from the dialog's bottom edge upward instead.
                 y = rect.Bottom - heightPx;
             }
 
@@ -586,12 +666,28 @@ public sealed partial class InlineSearchWindow : WindowEx
                 x = work.Left;
             }
         }
+        else
+        {
+            SetListAbove(false);
+        }
 
         // Position with raw physical pixels via SetWindowPos rather than MoveAndResize: MoveAndResize
         // takes DIPs and multiplies by this window's CURRENT DPI, which is still the old monitor's until
         // the move completes. When the dialog and this panel sit on monitors with different scaling, that
         // stale factor made the size and offset wrong. Physical pixels computed from the DIALOG's DPI are
         // correct on the target monitor; WinUI re-scales the content once the window lands there.
+        //
+        // Skip the call when nothing actually changed. A jump rebuilds the list and the hook reports the
+        // dialog moving several times in a row, so Reposition runs repeatedly with the same geometry;
+        // issuing SetWindowPos each time made the panel visibly flicker. Only a real change moves it.
+        var target = (x, y, widthPx, heightPx);
+        if (target == _lastPosition)
+        {
+            return;
+        }
+
+        _lastPosition = target;
+
         var selfHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         NativeMethods.SetWindowPos(
             selfHwnd,
@@ -603,20 +699,22 @@ public sealed partial class InlineSearchWindow : WindowEx
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
     }
 
+    private (int X, int Y, int W, int H)? _lastPosition;
+
     private int EstimateHeightPx(double scale)
     {
         // Card border top+bottom.
         const int cardBorder = 2;
         // Search row only; with no rows the panel is just the search box, so the divider and list padding
         // must not be counted or they leave a blank band under the box.
-        var dip = 40 + cardBorder;
+        var dip = 34 + cardBorder;
         if (_results.Count > 0)
         {
             // The list is capped at MaxVisibleRows tall and scrolls beyond that, so the panel never grows
             // taller than seven rows however many results came back.
             var rows = Math.Min(_results.Count, MaxVisibleRows);
-            // Divider (1) + list padding (2,4 => 8).
-            dip += 1 + 8 + rows * RowHeightDip;
+            // Divider (1) + list padding (2,3 => 6).
+            dip += 1 + 6 + rows * RowHeightDip;
         }
 
         return (int)Math.Round(dip * scale);
@@ -789,6 +887,16 @@ public sealed partial class InlineSearchWindow : WindowEx
             item.Path,
             item.IsDir ? Sox.PluginSdk.Services.HistoryEntryKind.Folder : Sox.PluginSdk.Services.HistoryEntryKind.File));
 
-        HidePanel();
+        // Keep the panel on screen and reset it to the empty-query state instead of hiding it. Hiding
+        // here made the dialog's resulting PathCaptured re-show it a moment later, which read as a
+        // flicker on every jump. The hook's re-report of the same dialog refreshes the list in place.
+        _searchCts?.Cancel();
+        _suppressTextChanged = true;
+        SearchBox.Text = string.Empty;
+        _suppressTextChanged = false;
+        _emptyMode = EmptyListMode.OpenFolders;
+        UpdateToggleGlyphs();
+        ShowOpenedFolders();
+        Reposition();
     }
 }

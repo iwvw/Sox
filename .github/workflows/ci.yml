@@ -36,3 +36,8 @@ jobs:
             -r win-x64 `
             --self-contained true `
             -p:Platform=x64
+
+      # Core 的纯逻辑单测（热键解析、历史分桶、快照布局校验）。没有测试就等于没有回归护栏。
+      - name: Test
+        shell: pwsh
+        run: dotnet test tests/Sox.Core.Tests/Sox.Core.Tests.csproj -c Release --nologo
