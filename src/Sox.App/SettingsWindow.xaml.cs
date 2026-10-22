@@ -16,6 +16,9 @@ public sealed partial class SettingsWindow : WindowEx
     private readonly Action _exitForUpdate;
     private readonly Dictionary<string, object> _pages = new();
     private Microsoft.UI.Xaml.Media.SystemBackdrop? _windowBackdrop;
+    private BackdropStyle? _appliedBackdropStyle;
+    private AppUpdateInfo? _titleUpdate;
+    private bool _titleUpdateBusy;
 
     public SettingsWindow(ThemeService themeService, SearchHost searchHost, AppUpdateService updates, Action exitForUpdate)
         : this(themeService, searchHost, updates, exitForUpdate, initialTag: null)
@@ -38,6 +41,24 @@ public sealed partial class SettingsWindow : WindowEx
         ApplyWindowTheme();
         _themeService.ThemeChanged += OnThemeChanged;
 
+        AppVersionText.Text = $"v{_updates.CurrentVersion}";
+        _ = CheckTitleUpdateAsync();
+
+        // RequestedTheme lands asynchronously, so the first ApplyWindowTheme still reads the previous
+        // ActualTheme; without this re-apply the material keeps the old light/dark tint until the next
+        // switch. MainWindow and the docked panel both rely on the same hook.
+        RootElement.ActualThemeChanged += (_, _) => ApplyWindowTheme();
+
+        // AppWindow.SetIcon only takes effect once the window has a taskbar button, which does not
+        // exist during the constructor; the first activation is the earliest reliable point.
+        Activated += (_, args) =>
+        {
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                ApplyWindowIcon();
+            }
+        };
+
         Closed += (_, _) =>
         {
             _themeService.ThemeChanged -= OnThemeChanged;
@@ -52,13 +73,11 @@ public sealed partial class SettingsWindow : WindowEx
         {
             AppWindow.Title = "Sox 设置";
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
+            // Hand only the empty strip to the drag logic, so the version chip and the update button
+            // stay clickable instead of acting as title-bar surface.
+            SetTitleBar(TitleBarDragRegion);
             AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
-            var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "sox-tray.ico");
-            if (File.Exists(icon))
-            {
-                AppWindow.SetIcon(icon);
-            }
+            ApplyWindowIcon();
         }
         catch (Exception ex)
         {
@@ -86,6 +105,75 @@ public sealed partial class SettingsWindow : WindowEx
     private void OnThemeChanged(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(ApplyWindowTheme);
 
+    // Runs in the background on every open. The About page owns the verbose "check / update" flow; the
+    // title bar only needs the quiet summary, so a failure here leaves the version chip and no button.
+    private async Task CheckTitleUpdateAsync()
+    {
+        try
+        {
+            var info = AppUpdateService.LastResult ?? await _updates.CheckAsync();
+            if (info.HasUpdate && info.Error is null)
+            {
+                _titleUpdate = info;
+                TitleUpdateText.Text = $"更新到 v{info.LatestVersion}";
+                TitleUpdateButton.Visibility = Visibility.Visible;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Title bar update check failed", ex);
+        }
+    }
+
+    private async void OnTitleUpdateClick(object sender, RoutedEventArgs e)
+    {
+        if (_titleUpdate is not { HasUpdate: true } info || _titleUpdateBusy)
+        {
+            return;
+        }
+
+        _titleUpdateBusy = true;
+        TitleUpdateButton.IsEnabled = false;
+        TitleUpdateText.Text = "下载中 0%";
+
+        try
+        {
+            var progress = new Progress<double>(p => TitleUpdateText.Text = $"下载中 {p * 100:F0}%");
+            var result = await _updates.PrepareUpdateAsync(progress);
+
+            if (result.Error is not null)
+            {
+                TitleUpdateText.Text = $"更新失败：{result.Error}";
+                return;
+            }
+
+            TitleUpdateText.Text = "即将重启…";
+
+            if (_updates.ConsumePendingScript() is { } script)
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"\"{script}\"\"",
+                    CreateNoWindow = true,
+                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+                });
+            }
+
+            _exitForUpdate();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Title bar update failed", ex);
+            TitleUpdateText.Text = $"更新失败：{ex.Message}";
+        }
+        finally
+        {
+            _titleUpdateBusy = false;
+            TitleUpdateButton.IsEnabled = true;
+        }
+    }
+
     /// <summary>
     /// Applies the same material engine (Acrylic / Mica / Clear) and light/dark theme the
     /// spotlight window uses, so the settings surface matches the main window's look.
@@ -95,23 +183,55 @@ public sealed partial class SettingsWindow : WindowEx
         var snapshot = _themeService.Current;
         RootElement.RequestedTheme = snapshot.Theme;
 
-        // WindowEx shadows SystemBackdrop with its own WinUIEx type; assign the base Window
-        // property so MicaBackdrop / AlwaysActiveAcrylicBackdrop work.
-        ((Microsoft.UI.Xaml.Window)this).SystemBackdrop = ResolveWindowBackdrop(snapshot.BackdropParameters.Style);
+        // Recreating the backdrop on every theme change crashes inside the compositor: the previous
+        // backdrop is still attached to the window and detaching it mid-swap trips an access violation
+        // in Microsoft.UI.Xaml.dll. Only rebuild when the material itself changed; a pure light/dark
+        // switch is handled by AlwaysActiveAcrylicBackdrop's own configuration callback.
+        var style = snapshot.BackdropParameters.Style;
+        if (_appliedBackdropStyle != style)
+        {
+            _appliedBackdropStyle = style;
+
+            var previous = _windowBackdrop;
+            _windowBackdrop = CreateWindowBackdrop(style);
+
+            // WindowEx shadows SystemBackdrop with its own WinUIEx type; assign the base Window
+            // property so MicaBackdrop / AlwaysActiveAcrylicBackdrop work. Assigning detaches the
+            // previous backdrop, so it is only safe to dispose that one afterwards.
+            ((Microsoft.UI.Xaml.Window)this).SystemBackdrop = _windowBackdrop;
+            (previous as IDisposable)?.Dispose();
+        }
+        else if (_windowBackdrop is AlwaysActiveAcrylicBackdrop acrylic)
+        {
+            // Same material, new theme: hand the resolved theme to the live controllers instead of
+            // relying on the framework's configuration callback, which fires before RequestedTheme
+            // has propagated and would therefore apply the previous theme.
+            acrylic.ApplyTheme(RootElement.ActualTheme);
+        }
     }
 
-    private Microsoft.UI.Xaml.Media.SystemBackdrop? ResolveWindowBackdrop(BackdropStyle style)
+    private void ApplyWindowIcon()
     {
-        (_windowBackdrop as IDisposable)?.Dispose();
+        try
+        {
+            var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "sox-tray.ico");
+            if (File.Exists(icon))
+            {
+                AppWindow.SetIcon(icon);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("SettingsWindow icon failed", ex);
+        }
+    }
 
-        _windowBackdrop = style switch
+    private Microsoft.UI.Xaml.Media.SystemBackdrop? CreateWindowBackdrop(BackdropStyle style) =>
+        style switch
         {
             BackdropStyle.Mica => new Microsoft.UI.Xaml.Media.MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base },
             _ => new AlwaysActiveAcrylicBackdrop(),
         };
-
-        return _windowBackdrop;
-    }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {

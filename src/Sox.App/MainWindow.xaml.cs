@@ -645,11 +645,7 @@ public sealed partial class MainWindow : WindowEx
         try
         {
             AppWindow.Title = "Sox";
-            var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "sox-tray.ico");
-            if (File.Exists(icon))
-            {
-                AppWindow.SetIcon(icon);
-            }
+            ApplyWindowIcon();
 
             ExtendsContentIntoTitleBar = true;
             AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Collapsed;
@@ -662,6 +658,27 @@ public sealed partial class MainWindow : WindowEx
         StripWindowChrome();
         ApplyBorderAttributes();
         InstallHotkeyHook();
+    }
+
+    // AppWindow.SetIcon is a no-op until the window owns a taskbar button, so the constructor call is
+    // routinely dropped: the taskbar / Alt+Tab / Aero-peek icon then keeps the generic default until
+    // something else happens to refresh it. Re-asserting on activation is the first reliable moment.
+    private void ApplyWindowIcon()
+    {
+        try
+        {
+            var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "sox-tray.ico");
+            if (!File.Exists(icon))
+            {
+                return;
+            }
+
+            AppWindow.SetIcon(icon);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Apply window icon failed", ex);
+        }
     }
 
     private void StripWindowChrome()
@@ -2349,6 +2366,7 @@ public sealed partial class MainWindow : WindowEx
         {
             _themeInitialized = true;
             ApplyTheme();
+            ApplyWindowIcon();
         }
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)

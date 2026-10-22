@@ -87,6 +87,27 @@ public sealed class AlwaysActiveAcrylicBackdrop : SystemBackdrop, IDisposable
         _targets.Clear();
     }
 
+    /// <summary>
+    /// Pushes a light/dark switch into the existing controllers. Callers that only change the theme
+    /// (not the material) must not rebuild the backdrop, so this is the entry point for that path.
+    /// </summary>
+    public void ApplyTheme(ElementTheme theme)
+    {
+        var backdropTheme = theme switch
+        {
+            ElementTheme.Dark => SystemBackdropTheme.Dark,
+            ElementTheme.Light => SystemBackdropTheme.Light,
+            _ => SystemBackdropTheme.Default,
+        };
+
+        // Snapshot: a configuration assignment can synchronously re-enter OnTargetConnected /
+        // OnTargetDisconnected, which mutates the dictionary.
+        foreach (var entry in _targets.Values.ToArray())
+        {
+            entry.Config.Theme = backdropTheme;
+        }
+    }
+
     private static SystemBackdropConfiguration BuildConfig(XamlRoot xamlRoot) => new()
     {
         IsInputActive = true,

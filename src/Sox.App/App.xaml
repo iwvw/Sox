@@ -18,6 +18,14 @@
             <appConverters:SearchTextMarginConverter x:Key="SearchTextMarginConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
+            <!--  Foreground-only style for text built in code. A {ThemeResource} inside a Setter is
+                  re-resolved when the theme changes; assigning the brush directly from
+                  Application.Current.Resources hands the element one concrete instance that never
+                  updates again, so those hints kept their old colour until a restart.  -->
+            <Style x:Key="HintTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
             <Style x:Key="ResultItemContainerStyle" TargetType="ListViewItem">
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Margin" Value="0" />

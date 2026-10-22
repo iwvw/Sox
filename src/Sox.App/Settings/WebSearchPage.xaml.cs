@@ -84,7 +84,7 @@ public sealed partial class WebSearchPage : Page
         {
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            Style = HintStyle(),
         };
         iconHint.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
         {
@@ -112,7 +112,7 @@ public sealed partial class WebSearchPage : Page
         {
             Text = "预览",
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            Style = HintStyle(),
         });
 
         void RefreshPreview()
@@ -191,6 +191,12 @@ public sealed partial class WebSearchPage : Page
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
     }
+
+    // Hints are built in code, so they cannot use {ThemeResource} inline. Applying a Style whose
+    // Setter holds the ThemeResource keeps them following the theme instead of freezing the brush
+    // that happened to be active when the dialog opened.
+    private static Style? HintStyle() =>
+        Application.Current.Resources.TryGetValue("HintTextStyle", out var style) ? style as Style : null;
 
     /// <summary>Row view-model over a stored engine so the list binds and refreshes cleanly.</summary>
     public sealed class EngineRow : INotifyPropertyChanged
