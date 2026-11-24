@@ -4,7 +4,7 @@
        so a project that sets its own Version (the Lertaro-derived Core/Service/PluginSdk snapshots)
        keeps it; only projects without one (Sox.App) inherit this. CI overrides with -p:Version. -->
   <PropertyGroup>
-    <SoxVersion Condition="'$(SoxVersion)' == ''">0.4.1</SoxVersion>
+    <SoxVersion Condition="'$(SoxVersion)' == ''">0.4.2</SoxVersion>
     <VersionPrefix Condition="'$(VersionPrefix)' == ''">$(SoxVersion)</VersionPrefix>
     <Version Condition="'$(Version)' == ''">$(VersionPrefix)</Version>
     <Product>Sox</Product>
@@ -13,6 +13,15 @@
     <Copyright>Copyright © 2026 DSUK</Copyright>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/iwvw/Sox</RepositoryUrl>
+  </PropertyGroup>
+
+  <!-- Uniform baseline for every project, so a new csproj cannot silently lose nullable analysis
+       (each existing project already opts in individually; this makes it the default for new ones).
+       TreatWarningsAsErrors stays off deliberately: the Lertaro-derived Core/Service snapshots carry
+       their own warning profile (see docs/adr/0010) and enabling it wholesale would break the build. -->
+  <PropertyGroup>
+    <Nullable Condition="'$(Nullable)' == ''">enable</Nullable>
+    <ImplicitUsings Condition="'$(ImplicitUsings)' == ''">enable</ImplicitUsings>
   </PropertyGroup>
 
 </Project>
