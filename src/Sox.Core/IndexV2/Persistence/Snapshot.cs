@@ -32,9 +32,9 @@ public sealed unsafe class Snapshot : IDisposable
     public string AliasProvidersFingerprint => Meta.AliasProvidersFingerprint;
     public DateTime LastUpdated => Meta.LastUpdated;
 
-    public static Snapshot Open(string path) => new(path);
+    public static Snapshot Open(string path, bool verifyChecksum = false) => new(path, verifyChecksum);
 
-    private Snapshot(string path)
+    private Snapshot(string path, bool verifyChecksum = false)
     {
         // Opened explicitly (not via the path-based CreateFromFile convenience overload) so the handle
         // includes FileShare.Delete: a live checkpoint/compaction cycle writes a FRESH snapshot to the
@@ -71,12 +71,34 @@ public sealed unsafe class Snapshot : IDisposable
 
             ValidateNameOffsets();
             ValidateIndexColumns();
+            if (verifyChecksum)
+                ValidateSectionsCrc();
         }
         catch
         {
             Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Verifies the CRC32C the writer stamped over the section region. Every other check here is
+    /// structural (counts, offsets, ordering), so a same-length bit flip inside a data column -- a bad
+    /// drive cache, a torn sector -- passes them all and silently mis-answers queries (wrong parents,
+    /// broken binary search, results under the wrong directory). Opt-in because it reads the whole
+    /// mapping, which callers pay only when they suspect a file (see the cache locators).
+    /// </summary>
+    private void ValidateSectionsCrc()
+    {
+        if (Meta.SectionsCrc32 == 0)
+            return; // written by a build that did not stamp one
+
+        SnapshotFormat.ComputeSectionOffsets(Meta, out var totalLength);
+        var span = new ReadOnlySpan<byte>(_base + Meta.SectionsOffset, (int)(totalLength - Meta.SectionsOffset));
+        var actual = SnapshotCrc32.Compute(span);
+        if (actual != Meta.SectionsCrc32)
+            throw new InvalidDataException(
+                $"Snapshot {SourceKey}: section checksum mismatch (stored {Meta.SectionsCrc32:X8}, computed {actual:X8}).");
     }
 
     private byte* Section(SnapshotSection section) => _base + _offsets[(int)section];
@@ -315,12 +337,18 @@ public sealed unsafe class Snapshot : IDisposable
         return TryGetOrphanParent(row, out var parentFrn) ? parentFrn : Ids[row];
     }
 
+    // Reused per thread: directory filtering calls this once per candidate row, so the old per-call
+    // List+StringBuilder pair was one of the hottest allocations in a filtered query.
+    [ThreadStatic] private static List<string>? _pathSegments;
+    [ThreadStatic] private static System.Text.StringBuilder? _pathBuilder;
+
     // Base-only path building with the old engine's orphan recovery: an unresolved parent link
     // re-resolves through its stashed FRN to a live directory row, else the tail hangs off the source
     // root. Delta-aware path building lives in the overlay. Depth cap is a corruption backstop only.
     public string GetFullPath(int row)
     {
-        var segments = new List<string>(8);
+        var segments = _pathSegments ??= new List<string>(8);
+        segments.Clear();
         var current = row;
         for (var depth = 0; depth < 512; depth++)
         {
@@ -347,7 +375,9 @@ public sealed unsafe class Snapshot : IDisposable
             current = parent;
         }
 
-        var builder = new System.Text.StringBuilder(SourceRoot, 64);
+        var builder = _pathBuilder ??= new System.Text.StringBuilder(128);
+        builder.Clear();
+        builder.Append(SourceRoot);
         for (var i = segments.Count - 1; i >= 0; i--)
         {
             if (segments[i].Length == 0)

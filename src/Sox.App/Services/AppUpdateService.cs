@@ -142,9 +142,14 @@ public sealed class AppUpdateService
             if (setupExe is null)
             {
                 extractDir = Path.Combine(workDir, "extract");
-                if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
-                ZipFile.ExtractToDirectory(downloaded, extractDir);
-                try { File.Delete(downloaded); } catch { }
+                // Off the UI thread: PrepareUpdateAsync is awaited directly from the settings dialog, and
+                // a few dozen MB of synchronous extract + recursive delete froze the window.
+                await Task.Run(() =>
+                {
+                    if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
+                    ZipFile.ExtractToDirectory(downloaded, extractDir);
+                    try { File.Delete(downloaded); } catch { }
+                }, ct).ConfigureAwait(false);
 
                 // The portable zip wraps everything in a single top-level "Sox" folder (see
                 // build-release.ps1). Copy that folder's *contents* into the app dir, not the folder
@@ -240,7 +245,14 @@ public sealed class AppUpdateService
             // unanswerable UAC prompt. Elevate just this one step with Start-Process -Verb RunAs -Wait:
             // the user gets a single UAC prompt, the install completes, and control returns here. The
             // setup is deleted afterward so downloads do not pile up in %TEMP% release after release.
-            sb.AppendLine($"powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process -FilePath '{setupExe}' -ArgumentList '/SILENT','/SP-','/NORESTART' -Verb RunAs -Wait\"");
+            //
+            // Passed as -EncodedCommand (UTF-16LE base64) rather than inline -Command text: the path runs
+            // through cmd and then PowerShell, and a single quote, '%' or certain CJK characters in the
+            // user's temp path broke both parsers -- the installer never ran, silently, while the App had
+            // already decided to exit for the update.
+            var inner = $"Start-Process -FilePath '{setupExe.Replace("'", "''")}' -ArgumentList '/SILENT','/SP-','/NORESTART' -Verb RunAs -Wait";
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(inner));
+            sb.AppendLine($"powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}");
             sb.AppendLine($"del /f /q \"{setupExe}\" >nul 2>&1");
         }
         else if (extractDir is not null)

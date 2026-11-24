@@ -66,6 +66,7 @@ internal class ScientificMathParser
                 }
                 else
                 {
+                    if (nextFactor == 0) throw new DivideByZeroException();
                     result %= nextFactor;
                 }
             }

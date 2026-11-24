@@ -126,7 +126,7 @@ internal sealed class ApplicationQueryProvider : IQueryProvider, IDisposable
         var matches = new List<(Entry Entry, int Start)>();
         foreach (var entry in entries)
         {
-            if (!Sox.Core.SearchIndex.FuzzyMatcher.IsMatch(query, entry.Title))
+            if (!Sox.Core.SearchIndex.FuzzyMatcher.IsMatchFreeText(query, entry.Title))
             {
                 continue;
             }

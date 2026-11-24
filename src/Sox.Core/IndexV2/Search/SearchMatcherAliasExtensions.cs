@@ -108,7 +108,9 @@ internal static class SearchMatcherAliasExtensions
                     // comment on IsAcceptableAliasMatch) needs the alias as chars -- the ASCII/byte fast
                     // path above deliberately never decodes it, since the common case doesn't need to.
                     // Only pay that decode cost here, in this already-rare tail (existing check failed).
-                    if (decodedLength < 0)
+                    // Must decode whenever the fast path was taken too: decodedLength is -1 there, and the
+                    // scratch still holds whatever alias the previous iteration decoded.
+                    if (isAsciiAlias || decodedLength < 0)
                     {
                         if (worker.AliasScratch.Length < aliasUtf8.Length)
                             worker.AliasScratch = new char[Math.Max(aliasUtf8.Length, worker.AliasScratch.Length * 2)];

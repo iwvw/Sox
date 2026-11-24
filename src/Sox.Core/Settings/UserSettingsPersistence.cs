@@ -165,7 +165,17 @@ internal static class UserSettingsPersistence
         lock (CacheLock)
         {
             var json = JsonSerializer.Serialize(settings, WriteOptions);
-            if (json == _lastJsonOnDisk) { _cachedSettings = settings; return true; }
+            // Compare against what is on disk NOW, not what this process last wrote: another Sox process
+            // (App, plugin sandbox, hook) may have saved in between, and overwriting blind would silently
+            // revert their change. Adopting the on-disk copy as our own prev-JSON keeps the write here --
+            // the caller's settings object is authoritative for this process's edit.
+            var onDisk = TryReadMainJson();
+            var diskUnchanged = onDisk == null ? _lastJsonOnDisk == null : onDisk == _lastJsonOnDisk;
+            if (json == onDisk) { _lastJsonOnDisk = json; _cachedSettings = settings; return true; }
+            if (!diskUnchanged)
+            {
+                Logger.Log("[UserSettings] Settings on disk changed by another process; this save overwrites it with the in-memory copy.", LogLevel.Warn);
+            }
             if (!TryPersist(json, SettingsPath)) return false;
             _cachedSettings = settings;
             _lastJsonOnDisk = json;

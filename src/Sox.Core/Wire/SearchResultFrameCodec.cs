@@ -51,6 +51,21 @@ internal static class SearchResultFrameCodec
 
     public static SearchResult ReadPayload(byte[] payload)
     {
+        try
+        {
+            return ReadPayloadCore(payload);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+        {
+            // A truncated or corrupted frame must not take down the whole response pump.
+            return Empty;
+        }
+    }
+
+    private static SearchResult Empty => new() { Name = string.Empty, Path = string.Empty, Drive = string.Empty };
+
+    private static SearchResult ReadPayloadCore(byte[] payload)
+    {
         var offset = 0;
         var name = ReadString(payload, ref offset);
         var path = ReadString(payload, ref offset);

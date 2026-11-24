@@ -83,21 +83,31 @@ public class ExplorerPathCollector : IActivePathCollector
                 for (var i = 0; i < count; i++)
                 {
                     object? window = null;
+                    object? document = null;
+                    object? folder = null;
+                    object? self = null;
                     try
                     {
                         window = windows.Item(i);
                         if (window == null) continue;
 
                         dynamic explorer = window;
-                        var path = explorer.Document.Folder.Self.Path as string;
+                        document = explorer.Document;
+                        folder = ((dynamic)document).Folder;
+                        self = ((dynamic)folder).Self;
+                        var path = ((dynamic)self).Path as string;
                         if (IsReportedFilesystemPath(path))
                             folders.Add(new OpenedFolder(path!, (IntPtr)explorer.HWND));
                     }
                     catch { }
                     finally
                     {
-                        if (window != null && Marshal.IsComObject(window))
-                            Marshal.ReleaseComObject(window);
+                        // Each dynamic step hands back its own RCW; releasing only the window left three
+                        // live references per request inside explorer.exe, so it never dropped ours.
+                        Release(self);
+                        Release(folder);
+                        Release(document);
+                        Release(window);
                     }
                 }
             }
@@ -161,6 +171,14 @@ public class ExplorerPathCollector : IActivePathCollector
         }
 
         return false;
+    }
+
+    private static void Release(object? comObject)
+    {
+        if (comObject != null && Marshal.IsComObject(comObject))
+        {
+            try { Marshal.ReleaseComObject(comObject); } catch { }
+        }
     }
 
     private static bool IsReportedFilesystemPath(string? path) =>

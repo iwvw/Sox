@@ -15,7 +15,7 @@ public sealed partial class IndexPage : Page
     private readonly Microsoft.UI.Xaml.Window _ownerWindow;
     private CancellationTokenSource? _statusCts;
     private MachineSettings? _machineSettings;
-    private readonly UserSettings _settings = UserSettings.Load();
+    private UserSettings _settings = UserSettings.Load();
     private readonly ObservableCollection<PriorityRow> _priorityRows = new();
 
     public IndexPage(SearchHost searchHost, Microsoft.UI.Xaml.Window ownerWindow)
@@ -71,7 +71,12 @@ public sealed partial class IndexPage : Page
         }
 
         var cts = new CancellationTokenSource();
-        _statusCts = cts;
+        var previous = Interlocked.Exchange(ref _statusCts, cts);
+        if (previous != null)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
         _ = Task.Run(() => _searchHost.SubscribeStatusAsync(OnStatus, cts.Token));
     }
 
@@ -79,8 +84,13 @@ public sealed partial class IndexPage : Page
 
     private void OnStatus(UsnIndexer.IndexerStatus status)
     {
+        var cts = _statusCts;
+        if (cts == null || cts.IsCancellationRequested)
+            return;
         DispatcherQueue.TryEnqueue(() =>
         {
+            if (!IsLoaded)
+                return;
             IndexStateText.Text = $"{status.State} {status.Progress}% · {status.TotalFiles:N0} 文件 / {status.TotalDirs:N0} 目录";
         });
     }
@@ -93,6 +103,10 @@ public sealed partial class IndexPage : Page
         {
             var ok = await _searchHost.RebuildDriveIndexAsync(drive);
             Log.Info($"Rebuild '{drive}' -> {ok}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Rebuild '{drive}' failed", ex);
         }
         finally
         {
@@ -130,8 +144,9 @@ public sealed partial class IndexPage : Page
 
     public void Cleanup()
     {
-        _statusCts?.Cancel();
-        _statusCts?.Dispose();
+        var cts = Interlocked.Exchange(ref _statusCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
     }
 
     // ---- Priority rules ----
@@ -249,6 +264,12 @@ public sealed partial class IndexPage : Page
 
     private void SavePriorities()
     {
+        var live = UserSettings.Load();
+        if (!ReferenceEquals(live, _settings))
+        {
+            live.PathPriorities = _settings.PathPriorities;
+            _settings = live;
+        }
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
     }

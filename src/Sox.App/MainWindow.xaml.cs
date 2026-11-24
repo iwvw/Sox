@@ -486,28 +486,22 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        for (var i = 0; i < MaxVisibleRows; i++)
-        {
-            var index = _windowStart + i;
-            var item = index < _results.Count ? _results[index] : null;
+        // First trim the tail, then align position by position. Removing while iterating forward shifted
+        // every later element down one slot, so the checks after a removal inspected the wrong element and
+        // a shrink (9 rows down to 6) left stale rows behind.
+        var wanted = Math.Min(MaxVisibleRows, Math.Max(0, _results.Count - _windowStart));
+        while (_visibleResults.Count > wanted)
+            _visibleResults.RemoveAt(_visibleResults.Count - 1);
 
+        for (var i = 0; i < wanted; i++)
+        {
+            var item = _results[_windowStart + i];
             if (i < _visibleResults.Count)
             {
-                if (ReferenceEquals(_visibleResults[i], item))
-                {
-                    continue;
-                }
-
-                if (item is null)
-                {
-                    _visibleResults.RemoveAt(i);
-                }
-                else
-                {
+                if (!ReferenceEquals(_visibleResults[i], item))
                     _visibleResults[i] = item;
-                }
             }
-            else if (item is not null)
+            else
             {
                 _visibleResults.Add(item);
             }
@@ -554,7 +548,6 @@ public sealed partial class MainWindow : WindowEx
         _tray.SettingsRequested += () => DispatcherQueue.TryEnqueue(() => OpenSettings());
         _tray.AboutRequested += () => DispatcherQueue.TryEnqueue(ShowAbout);
         _tray.ExitRequested += () => DispatcherQueue.TryEnqueue(ExitApp);
-        _tray.ExitAndStopServiceRequested += () => DispatcherQueue.TryEnqueue(ExitAppAndStopService);
 
         var hide = Sox.Core.UserSettings.Load().HideTrayIcon;
         _tray.Show(!hide);
@@ -624,16 +617,11 @@ public sealed partial class MainWindow : WindowEx
 
     private void ShowAbout() => OpenSettings("about");
 
-    private void ExitApp()
-    {
-        _tray.Dispose();
-        Application.Current.Exit();
-    }
-
-    /// <summary>Exit like <see cref="ExitApp"/> but also stop the Windows service first, so no Sox
-    /// process is left behind. Stopping on the UI thread would block on the SCM poll, so it runs on a
-    /// background thread and the app exits once the service reports STOPPED.</summary>
-    private async void ExitAppAndStopService()
+    /// <summary>Exit: dispose the tray icon, stop the Windows service, then quit. Stopping on the UI thread
+    /// would block on the SCM poll (up to 5s), so it runs on a background thread; a stop failure is logged
+    /// by <see cref="ServiceBootstrapper.TryStop"/> and must not keep the user stuck in a window that will
+    /// not close, so the app exits either way. See ADR-0023.</summary>
+    private async void ExitApp()
     {
         _tray.Dispose();
         await Task.Run(() => ServiceBootstrapper.TryStop());
@@ -814,6 +802,7 @@ public sealed partial class MainWindow : WindowEx
     }
 
     private CancellationTokenSource? _statusCts;
+    private (int X, int Y, int Width, int Height) _lastResize;
     private string? _lastStatusSignature;
 
     private async Task InitializeAsync()
@@ -825,9 +814,7 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        var cts = new CancellationTokenSource();
-        _statusCts = cts;
-        _ = Task.Run(() => _searchHost.SubscribeStatusAsync(OnIndexStatus, cts.Token));
+        SubscribeStatus();
 
         PushSearchContext(UserSettings.Load());
 
@@ -894,11 +881,22 @@ public sealed partial class MainWindow : WindowEx
         if (await EnsureServiceReadyAsync())
         {
             Log.Info("Service watchdog: SoxService is back.");
-            var cts = new CancellationTokenSource();
-            _statusCts?.Cancel();
-            _statusCts = cts;
-            _ = Task.Run(() => _searchHost.SubscribeStatusAsync(OnIndexStatus, cts.Token));
+            SubscribeStatus();
         }
+    }
+
+    // Single owner of the status subscription. Replacing the token source without cancelling the old one
+    // leaves two live subscriptions feeding the UI (double status updates) and leaks the abandoned source.
+    private void SubscribeStatus()
+    {
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _statusCts, cts);
+        if (previous != null)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
+        _ = Task.Run(() => _searchHost.SubscribeStatusAsync(OnIndexStatus, cts.Token));
     }
 
     private void OnIndexStatus(UsnIndexer.IndexerStatus status)
@@ -1280,6 +1278,12 @@ public sealed partial class MainWindow : WindowEx
                 y = Math.Max(work.Y, workBottom - height);
             }
 
+            // Every streamed snapshot schedules a resize; skip the SetWindowPos (and the display/DPI
+            // queries feeding it are already paid, but the reposition itself makes the window visibly
+            // jitter) when nothing actually changed.
+            if (_lastResize == (x, y, width, height))
+                return;
+
             NativeMethods.SetWindowPos(
                 _hwnd,
                 IntPtr.Zero,
@@ -1288,6 +1292,7 @@ public sealed partial class MainWindow : WindowEx
                 width,
                 height,
                 NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            _lastResize = (x, y, width, height);
         }
         catch (Exception ex)
         {

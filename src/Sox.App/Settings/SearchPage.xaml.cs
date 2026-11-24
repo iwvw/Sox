@@ -43,7 +43,6 @@ public sealed partial class SearchPage : Page
     private void OnFuzzyToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.EnableFuzzyMatch = FuzzyToggle.IsOn;
         SearchContext.DefaultFuzzyMatchEnabled = FuzzyToggle.IsOn;
         Save();
     }
@@ -51,7 +50,6 @@ public sealed partial class SearchPage : Page
     private void OnOrFirstToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.OrFirstPrecedence = OrFirstToggle.IsOn;
         SearchContext.DefaultAndFirstPrecedence = !OrFirstToggle.IsOn;
         Save();
     }
@@ -59,28 +57,24 @@ public sealed partial class SearchPage : Page
     private void OnHistoryToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.EnableHistory = HistoryToggle.IsOn;
         Save();
     }
 
     private void OnKeywordHistoryToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.EnableKeywordHistory = KeywordHistoryToggle.IsOn;
         Save();
     }
 
     private void OnAsciiOnlyToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.AsciiOnlySearchBox = AsciiOnlyToggle.IsOn;
         Save();
     }
 
     private void OnMaxResultsChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loading) return;
-        _settings.MaxResults = MaxResultsValue;
         Save();
     }
 
@@ -92,6 +86,13 @@ public sealed partial class SearchPage : Page
 
     private void Save()
     {
+        _settings = UserSettings.Load();
+        _settings.EnableFuzzyMatch = FuzzyToggle.IsOn;
+        _settings.OrFirstPrecedence = OrFirstToggle.IsOn;
+        _settings.EnableHistory = HistoryToggle.IsOn;
+        _settings.EnableKeywordHistory = KeywordHistoryToggle.IsOn;
+        _settings.AsciiOnlySearchBox = AsciiOnlyToggle.IsOn;
+        _settings.MaxResults = MaxResultsValue;
         _settings.ExcludedPaths = SplitLines(ExcludedPathsBox.Text);
         _settings.IgnoredPathGlobs = SplitLines(IgnoredGlobsBox.Text);
         _settings.IgnoredPathRegexes = SplitLines(IgnoredRegexBox.Text);

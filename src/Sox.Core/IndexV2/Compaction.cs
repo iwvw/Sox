@@ -44,7 +44,10 @@ public static class Compaction
             ExclusionRulesFingerprint = stamp.ExclusionRulesFingerprint ?? snapshot.ExclusionRulesFingerprint,
             LastUpdated = stamp.LastUpdated ?? snapshot.LastUpdated,
         };
-        store.Records.Capacity = snapshot.Count + delta.VisibleAddedCount;
+        // Reserve for the rows that will actually survive: the old estimate counted every added delta row,
+        // including removed ones, and ignored the base rows the delta deletes/renames away -- on a
+        // delete-heavy batch that over-allocated by the whole deleted subtree.
+        store.Records.Capacity = Math.Max(0, snapshot.Count - delta.DeletedBase.Count - delta.RenamedAway.Count + delta.VisibleAddedCount);
 
         for (var row = 0; row < snapshot.Count; row++)
         {
@@ -72,6 +75,9 @@ public static class Compaction
                 record.Size, record.Creation, record.LastWrite, record.LastAccess));
         }
 
+        // Give back whatever the estimate overshot: this store is handed straight to the snapshot writer,
+        // which walks it once, so holding a surplus capacity through the write is pure peak-memory cost.
+        store.Records.TrimExcess();
         return store;
     }
 }

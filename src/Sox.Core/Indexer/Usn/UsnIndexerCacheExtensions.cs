@@ -147,6 +147,36 @@ public static class UsnIndexerCacheExtensions
         }
     }
 
+    // Puts a drive back on its last on-disk snapshot after a rebuild failed, so a transient failure
+    // (locked volume handle, unreadable $MFT) degrades to "stale but searchable" instead of "gone until
+    // the next restart". Returns false when no usable cache exists.
+    public static bool TryRestoreFromCache(this UsnIndexer indexer, string cacheDir, string drive)
+    {
+        var opened = TryOpenV2(cacheDir, drive);
+        if (opened == null)
+            return false;
+
+        lock (indexer.LockObj)
+        {
+            if (indexer._recordIndexes.TryGetValue(drive, out var existing))
+            {
+                indexer._recordIndexes.Remove(drive);
+                existing.Dispose();
+            }
+            indexer._recordIndexes[drive] = opened.Value.Live;
+            indexer._driveMetadata[drive] = opened.Value.Metadata;
+            var (files, dirs) = opened.Value.Live.GetCounts();
+            indexer.Status.TotalFiles += files;
+            indexer.Status.TotalDirs += dirs;
+            if (!indexer.Status.ActiveDrives.Contains(drive))
+                indexer.Status.ActiveDrives.Add(drive);
+            indexer.UpdateDriveCounts(drive, markReady: true);
+        }
+
+        Logger.Log($"[UsnIndexer] Restored drive {drive} from its cached snapshot after a failed rebuild.", LogLevel.Warn);
+        return true;
+    }
+
     // Opens a drive's V2 cache. No legacy v15 (.meta/.records/.names) migration -- a pre-V2 cache is
     // simply not found here, so the normal "no cache" path in the caller does a full fresh rebuild
     // instead. Returns null if no .idx exists, it fails to open, or the volume identity has changed
@@ -164,7 +194,17 @@ public static class UsnIndexerCacheExtensions
         }
         catch (Exception ex)
         {
-            Logger.Log($"[UsnIndexer] Failed to open IndexV2 cache for drive {drive}: {ex.Message}", LogLevel.Error);
+            // The structural checks failed. Run the (expensive) checksum pass only here, so the log can
+            // say whether the bytes themselves are bad -- which is a rebuild signal, not a retry signal.
+            try
+            {
+                using var probe = Snapshot.Open(v2Path, verifyChecksum: true);
+                Logger.Log($"[UsnIndexer] IndexV2 cache for drive {drive} opened but failed validation: {ex.Message}", LogLevel.Error);
+            }
+            catch (Exception crcEx)
+            {
+                Logger.Log($"[UsnIndexer] IndexV2 cache for drive {drive} is corrupt ({crcEx.Message}); it will be rebuilt.", LogLevel.Warn);
+            }
             return null;
         }
 

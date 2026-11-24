@@ -70,8 +70,7 @@ internal static class LocalDriveCacheLocator
 
             if (meta == null)
             {
-                TryDelete(path);
-                continue;
+                continue; // stale version or a foreign/partial file -- never delete it; a rebuild overwrites it
             }
 
             if (meta.SourceKind == FileRecordSourceKind.LocalMft)

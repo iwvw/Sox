@@ -29,6 +29,7 @@ internal sealed class TreeBuilder
     internal readonly FileRecordNamePool _namePool = new();
     private readonly HashSet<UInt128> _enqueuedIds = new();
     private int _pendingDirectories;
+    private readonly object _enqueueGate = new();
     internal int _countSinceProgress;
     internal int _indexedItems;
     // Live files/dirs split of _indexedItems, for progress display -- _indexedItems itself stays the
@@ -130,8 +131,15 @@ internal sealed class TreeBuilder
             {
                 _token.ThrowIfCancellationRequested();
                 WalkDirectory(current);
-                if (Interlocked.Decrement(ref _pendingDirectories) == 0)
-                    _pending.Writer.TryComplete();
+                // Decrement and the completion check share the enqueue gate: an increment that happens
+                // between them would otherwise be lost when a sibling directory enqueues right as the
+                // count momentarily reaches zero, completing the channel under it (ChannelClosedException,
+                // aborting the whole scan).
+                lock (_enqueueGate)
+                {
+                    if (--_pendingDirectories == 0)
+                        _pending.Writer.TryComplete();
+                }
             }
         }
     }
@@ -283,9 +291,12 @@ internal sealed class TreeBuilder
                 return;
         }
 
-        Interlocked.Increment(ref _pendingDirectories);
         try
         {
+            // Counted under the same gate the completion check uses, so a worker observing zero has
+            // genuinely seen every enqueue.
+            lock (_enqueueGate)
+                _pendingDirectories++;
             _pending.Writer.WriteAsync(new WorkItem(path, logicalPath, parentId, depth, ignoreRules, nextAncestors), _token)
                 .AsTask()
                 .GetAwaiter()
@@ -293,7 +304,8 @@ internal sealed class TreeBuilder
         }
         catch
         {
-            Interlocked.Decrement(ref _pendingDirectories);
+            lock (_enqueueGate)
+                _pendingDirectories--;
             throw;
         }
     }

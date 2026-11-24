@@ -11,7 +11,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        const string mutexName = "Sox.SingleInstance";
+        // Session-scoped and non-obvious: a bare name lands in the machine-wide Global namespace, where any
+        // process (including a low-integrity one) can pre-create it and make Sox exit silently as
+        // "already running", and where a second logged-in user would block the first's instance.
+        var mutexName = $"Sox.SingleInstance.{System.Diagnostics.Process.GetCurrentProcess().SessionId}";
         _instanceMutex = new Mutex(initiallyOwned: true, mutexName, out var isFirstInstance);
 
         if (!isFirstInstance)

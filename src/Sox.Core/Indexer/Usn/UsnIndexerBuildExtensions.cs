@@ -36,10 +36,19 @@ public static class UsnIndexerBuildExtensions
             {
                 indexer.Status.TotalFiles = 0;
                 indexer.Status.TotalDirs = 0;
-                indexer._driveMetadata.Clear();
-                foreach (var live in indexer._recordIndexes.Values)
-                    live.Dispose();
-                indexer._recordIndexes.Clear();
+                // Dispose only the drives being rebuilt: dropping every drive's LiveIndex would leave any
+                // drive that is not in `drives` (and any drive whose rebuild then fails) with no index at
+                // all until a restart, since IndexBuilder logs a failure and moves on.
+                var rebuilding = new HashSet<string>(drives, StringComparer.OrdinalIgnoreCase);
+                foreach (var drive in rebuilding)
+                {
+                    indexer._driveMetadata.Remove(drive);
+                    if (indexer._recordIndexes.TryGetValue(drive, out var live))
+                    {
+                        indexer._recordIndexes.Remove(drive);
+                        live.Dispose();
+                    }
+                }
                 indexer.Status.ActiveDrives.Clear();
             }
 
@@ -71,8 +80,13 @@ public static class UsnIndexerBuildExtensions
             if (forceFullScan)
                 return null;
 
+            // Resolve the LiveIndex under the lock, but materialise the store OUTSIDE it: ToStore() takes
+            // the LiveIndex read lock, and compaction takes that same lock before reaching LockObj -- doing
+            // both here would invert the order and can deadlock against a running compaction.
+            LiveIndex? live;
             lock (indexer.LockObj)
-                return indexer._recordIndexes.TryGetValue(drive, out var live) ? live.ToStore() : null;
+                indexer._recordIndexes.TryGetValue(drive, out live);
+            return live?.ToStore();
         }
 
         return IndexBuilder.BuildDrives(
@@ -111,7 +125,8 @@ public static class UsnIndexerBuildExtensions
             // path above does (PublishLocalDriveCheckpoint doesn't care about SourceKind/IdKind, only about
             // writing a store and swapping a fresh LiveIndex in). A no-op for NTFS/$MFT (see JournalReader).
             (drive, checkpointStore, _, token) => indexer.PublishLocalDriveCheckpoint(cacheDir, drive, checkpointStore, token),
-            createDriveRemovalScope
+            createDriveRemovalScope,
+            drive => indexer.TryRestoreFromCache(cacheDir, drive)
         );
     }
 

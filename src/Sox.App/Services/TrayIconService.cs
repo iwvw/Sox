@@ -8,12 +8,20 @@ internal sealed class TrayIconService : IDisposable
 {
     private TaskbarIcon? _icon;
     private ElementTheme _theme = ElementTheme.Default;
+    private bool _disposed;
+
+    public TrayIconService()
+    {
+        // A hard exit (taskkill from the updater, Task Manager) never runs Dispose, and the shell then
+        // leaves a phantom icon behind until the user hovers it. Removing it here covers those paths,
+        // because ProcessExit still runs for them.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => Dispose();
+    }
 
     public event Action? OpenRequested;
     public event Action? SettingsRequested;
     public event Action? AboutRequested;
     public event Action? ExitRequested;
-    public event Action? ExitAndStopServiceRequested;
 
     public void Show(bool visible)
     {
@@ -54,7 +62,6 @@ internal sealed class TrayIconService : IDisposable
             Wire(menu, 2, () => SettingsRequested?.Invoke());
             Wire(menu, 3, () => AboutRequested?.Invoke());
             Wire(menu, 5, () => ExitRequested?.Invoke());
-            Wire(menu, 6, () => ExitAndStopServiceRequested?.Invoke());
         }
 
         icon.ForceCreate(enablesEfficiencyMode: false);
@@ -71,13 +78,21 @@ internal sealed class TrayIconService : IDisposable
 
     public void Dispose()
     {
-        if (_icon is null)
-        {
+        if (_disposed)
             return;
-        }
+        _disposed = true;
+        if (_icon is null)
+            return;
 
-        _icon.Visibility = Visibility.Collapsed;
-        _icon.Dispose();
+        try
+        {
+            _icon.Visibility = Visibility.Collapsed;
+            _icon.Dispose();
+        }
+        catch
+        {
+            // ProcessExit can run after the XAML/dispatcher is gone; the shell drops the icon on exit anyway.
+        }
         _icon = null;
     }
 

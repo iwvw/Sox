@@ -30,9 +30,14 @@ namespace Sox.App.Services;
         }
 
         ServiceBootstrapper.TryStart();
-        for (var i = 0; i < 20; i++)
+
+        // Probe on a short, growing interval instead of a flat 20 x 250ms: a service that comes up in
+        // 300ms is usable immediately, and total patience still spans several seconds.
+        var delayMs = 50;
+        var deadline = Environment.TickCount64 + 5000;
+        while (Environment.TickCount64 < deadline)
         {
-            await Task.Delay(250).ConfigureAwait(false);
+            await Task.Delay(delayMs).ConfigureAwait(false);
             try
             {
                 if (await _service.PingAsync().ConfigureAwait(false))
@@ -44,6 +49,8 @@ namespace Sox.App.Services;
             {
                 // Keep retrying until the timeout elapses.
             }
+
+            delayMs = Math.Min(delayMs * 2, 500);
         }
 
         return false;

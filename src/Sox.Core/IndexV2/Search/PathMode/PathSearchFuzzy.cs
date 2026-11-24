@@ -14,6 +14,7 @@ namespace Sox.Core.IndexV2.Search.PathMode;
 // fanned out per row. Delta rows (small, live-updated) keep their per-record string matching.
 internal static class PathSearchFuzzy
 {
+    private static readonly int DefaultMatchDegree = Math.Max(1, Environment.ProcessorCount / 2);
     // See NameSearch's identical constants: the ranking weight is too expensive to compute inline
     // for every matched candidate, so the scan keeps a wider unweighted top-N and only that bounded
     // headroom set gets refined (filename weight * directory weight) afterward.
@@ -124,7 +125,7 @@ internal static class PathSearchFuzzy
         FzfTopN topN, int keep, CancellationToken token, NameSearch.DirectoryContext directoryContext)
     {
         var gate = new PathGate(snapshot, delta, dirQuery);
-        var matches = SearchMatcherPath.MatchUniquesForPath(snapshot, filePattern);
+        var matches = SearchMatcherPath.MatchUniquesForPath(snapshot, filePattern, token);
 
         // Bounded per-worker top-N sets keep the parallel fanout's memory flat even when a broad
         // dir-only query admits most of the drive; a caller asking for an enormous keep (no real UI
@@ -246,7 +247,9 @@ internal static class PathSearchFuzzy
         var membership = directoryContext.FilterLower != null ? new Dictionary<int, bool>() : null;
 
         var hits = SearchMatcher.RentHitList();
-        SearchMatcher.MatchUniques(snapshot, pattern, hits);
+        // Same budget as the name search: without a cap this fans out to every core per drive, and with
+        // several drives in flight that oversubscribes. The token also lets a new keystroke stop it.
+        SearchMatcher.MatchUniques(snapshot, pattern, hits, token, maxDegreeOfParallelism: DefaultMatchDegree);
         foreach (var m in hits)
         {
             token.ThrowIfCancellationRequested();

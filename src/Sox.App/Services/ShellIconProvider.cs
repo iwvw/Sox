@@ -11,9 +11,14 @@ internal static class ShellIconProvider
 {
     private const int DefaultSize = 64;
     private const int MaxPngCacheEntries = 4096;
+    private const int MaxCacheEntries = 2048;
 
     private static readonly ConcurrentDictionary<string, BitmapImage> Cache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, byte[]> PngCache = new(StringComparer.OrdinalIgnoreCase);
+    // Insertion order per cache, used to evict the oldest entries instead of clearing everything (a clear
+    // forced every visible row to re-run IShellItemImageFactory, which reads from disk).
+    private static readonly ConcurrentQueue<string> CacheOrder = new();
+    private static readonly ConcurrentQueue<string> PngCacheOrder = new();
     private static readonly StaIconWorker Worker = new();
 
     // Shell thumbnail extraction is the expensive path (it loads the actual content), so only media
@@ -33,8 +38,8 @@ internal static class ShellIconProvider
 
     public static BitmapImage? GetIcon(string path, bool isDir, int pixelSize = DefaultSize)
     {
-        var key = (isDir ? "::dir" : (Path.GetExtension(path) is { Length: > 0 } ext ? ext : "::file"))
-            + "@" + pixelSize;
+        // Keyed by the full path: keying by extension handed every .exe the first exe's icon.
+        var key = path + "@" + pixelSize;
         if (Cache.TryGetValue(key, out var cached))
         {
             return cached;
@@ -47,8 +52,20 @@ internal static class ShellIconProvider
         }
 
         var image = CreateImage(png);
-        Cache[key] = image;
+        if (Cache.TryAdd(key, image))
+        {
+            CacheOrder.Enqueue(key);
+            TrimCache(Cache, CacheOrder, MaxCacheEntries);
+        }
         return image;
+    }
+
+    private static void TrimCache<T>(ConcurrentDictionary<string, T> cache, ConcurrentQueue<string> order, int maxEntries)
+    {
+        while (cache.Count > maxEntries && order.TryDequeue(out var oldest))
+        {
+            cache.TryRemove(oldest, out _);
+        }
     }
 
     /// <summary>Renders the shell icon to PNG bytes. Safe to call from any thread (STA worker inside).</summary>
@@ -63,15 +80,12 @@ internal static class ShellIconProvider
         try
         {
             var png = Worker.Run(() => RenderPng(path, isDir, Math.Clamp(pixelSize, 16, 256)));
-            if (png is not null)
+            if (png is not null && PngCache.TryAdd(key, png))
             {
-                // Bounded so a long session touching many distinct icons cannot grow without limit.
-                if (PngCache.Count >= MaxPngCacheEntries)
-                {
-                    PngCache.Clear();
-                }
-
-                PngCache[key] = png;
+                // Evict the oldest entries rather than clearing: a clear made every visible row re-run
+                // IShellItemImageFactory, which stalls scrolling while it re-reads from disk.
+                PngCacheOrder.Enqueue(key);
+                TrimCache(PngCache, PngCacheOrder, MaxPngCacheEntries);
             }
 
             return png;
@@ -122,9 +136,24 @@ internal static class ShellIconProvider
             {
                 var thread = new Thread(() =>
                 {
-                    foreach (var work in _queue.GetConsumingEnumerable())
+                    // An STA thread created by hand does not get COM initialised for it: the CLR only does
+                    // that on threads it creates. Without this, IShellItemImageFactory (and anything else
+                    // that needs an initialised apartment) fails with CO_E_NOTINITIALIZED /
+                    // RPC_E_WRONG_THREAD on these threads, which shows up as generic icons for packaged and
+                    // shell-namespace items.
+                    var comInitialized = false;
+                    try
                     {
-                        work();
+                        comInitialized = OleInitialize(IntPtr.Zero) >= 0;
+                        foreach (var work in _queue.GetConsumingEnumerable())
+                        {
+                            work();
+                        }
+                    }
+                    finally
+                    {
+                        if (comInitialized)
+                            OleUninitialize();
                     }
                 })
                 {
@@ -136,6 +165,12 @@ internal static class ShellIconProvider
                 _threads[i] = thread;
             }
         }
+
+        [System.Runtime.InteropServices.DllImport("ole32.dll")]
+        private static extern int OleInitialize(IntPtr pvReserved);
+
+        [System.Runtime.InteropServices.DllImport("ole32.dll")]
+        private static extern void OleUninitialize();
 
         public T Run<T>(Func<T> func)
         {
@@ -157,7 +192,13 @@ internal static class ShellIconProvider
                 }
             });
 
-            done.Wait();
+            // Bounded: a shell call that blocks (offline share, damaged file) would otherwise park one of
+            // the three workers forever and stall every icon behind it, with the caller waiting as well.
+            if (!done.Wait(TimeSpan.FromSeconds(10)))
+            {
+                Log.Error($"Shell icon worker timed out after 10s; giving up on this item.");
+                return default!;
+            }
             return result;
         }
     }

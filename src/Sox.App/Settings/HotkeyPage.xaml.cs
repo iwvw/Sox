@@ -11,45 +11,43 @@ namespace Sox.App.Settings;
 
 public sealed partial class HotkeyPage : Page
 {
-    private readonly UserSettings _settings;
-
     public HotkeyPage()
     {
-        _settings = UserSettings.Load();
+        var settings = UserSettings.Load();
         InitializeComponent();
-        SummonHotkeyBox.Text = _settings.SummonHotkey;
-        QuickSwitchHotkeyBox.Text = _settings.Hotkeys.QuickSwitchHotkey;
-        FullscreenToggle.IsOn = _settings.DisableHotkeyInFullscreen;
+        SummonHotkeyBox.Text = settings.SummonHotkey;
+        QuickSwitchHotkeyBox.Text = settings.Hotkeys.QuickSwitchHotkey;
+        FullscreenToggle.IsOn = settings.DisableHotkeyInFullscreen;
     }
 
     private void OnFullscreenToggled(object sender, RoutedEventArgs e)
     {
-        _settings.DisableHotkeyInFullscreen = FullscreenToggle.IsOn;
-        _settings.Save();
+        UserSettings.Load().DisableHotkeyInFullscreen = FullscreenToggle.IsOn;
+        UserSettings.Load().Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
     }
 
     private void OnSummonHotkeyKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (TryRecord(e, out var text))
+        if (!TryRecord(e, allowClear: false, out var text))
         {
-            _settings.SummonHotkey = text;
-            SaveAndSync();
+            if (e.Key == VirtualKey.Back)
+                _ = ShowMessageAsync("热键无效", "呼出热键不能为空，请至少包含一个修饰键。");
+            return;
         }
+        SaveAndSync(summon: text, quickSwitch: null);
     }
 
     private void OnQuickSwitchHotkeyKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (TryRecord(e, out var text))
-        {
-            _settings.Hotkeys.QuickSwitchHotkey = text;
-            SaveAndSync();
-        }
+        if (TryRecord(e, allowClear: true, out var text))
+            SaveAndSync(summon: null, quickSwitch: text);
     }
 
-    // Shared recorder: consumes the key, ignores bare modifiers, maps Backspace to "clear", and rejects a
-    // combo with no modifier. The recorded text uses the same flat format HotkeyParser/ParseCombo read.
-    private bool TryRecord(KeyRoutedEventArgs e, out string text)
+    // Shared recorder: consumes the key, ignores bare modifiers, maps Backspace to "clear" when allowed,
+    // and rejects a combo with no modifier. The recorded text uses the same flat format
+    // HotkeyParser/ParseCombo read.
+    private bool TryRecord(KeyRoutedEventArgs e, bool allowClear, out string text)
     {
         e.Handled = true;
         text = string.Empty;
@@ -62,9 +60,7 @@ public sealed partial class HotkeyPage : Page
         }
 
         if (key == VirtualKey.Back)
-        {
-            return true;
-        }
+            return allowClear;
 
         var ctrl = IsDown(VirtualKey.Control);
         var alt = IsDown(VirtualKey.Menu);
@@ -89,9 +85,7 @@ public sealed partial class HotkeyPage : Page
 
     private void OnResetHotkeys(object sender, RoutedEventArgs e)
     {
-        _settings.SummonHotkey = "Alt+Space";
-        _settings.Hotkeys.QuickSwitchHotkey = "Ctrl+G";
-        SaveAndSync();
+        SaveAndSync(summon: "Alt+Space", quickSwitch: "Ctrl+G");
     }
 
     private static bool IsDown(VirtualKey key) =>
@@ -99,12 +93,16 @@ public sealed partial class HotkeyPage : Page
 
     // Saves, then reads the preference back: the main window may reject the combination (already taken)
     // and restore the previous binding, so the box must show what is actually bound, not what was typed.
-    private void SaveAndSync()
+    private void SaveAndSync(string? summon, string? quickSwitch)
     {
-        _settings.Save();
+        var settings = UserSettings.Load();
+        if (summon != null) settings.SummonHotkey = summon;
+        if (quickSwitch != null) settings.Hotkeys.QuickSwitchHotkey = quickSwitch;
+        settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
-        SummonHotkeyBox.Text = _settings.SummonHotkey;
-        QuickSwitchHotkeyBox.Text = _settings.Hotkeys.QuickSwitchHotkey;
+        var actual = UserSettings.ForceReload();
+        SummonHotkeyBox.Text = actual.SummonHotkey;
+        QuickSwitchHotkeyBox.Text = actual.Hotkeys.QuickSwitchHotkey;
     }
 
     private async Task ShowMessageAsync(string title, string message)

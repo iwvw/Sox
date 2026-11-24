@@ -48,9 +48,11 @@ public static class PluginPreviewCache
 
     public static string Register(string title, string pluginName, Lazy<UserControl> factory, Func<object?>? iconProvider = null)
     {
-        var encodedTitle = Uri.EscapeDataString(title);
-        var encodedPlugin = Uri.EscapeDataString(pluginName);
-        var id = $"flow-preview:{encodedTitle}:{encodedPlugin}:{Guid.NewGuid():N}";
+        // Pipe (not ':') as the separator: Uri.EscapeDataString leaves ':' intact, so a title containing
+        // a colon used to split into the wrong fields on parse and the preview panel came back blank.
+        var encodedTitle = Uri.EscapeDataString(title).Replace(":", "%3A");
+        var encodedPlugin = Uri.EscapeDataString(pluginName).Replace(":", "%3A");
+        var id = $"flow-preview|{encodedTitle}|{encodedPlugin}|{Guid.NewGuid():N}";
         var entry = new PluginPreviewEntry(title, pluginName, factory, iconProvider);
         Entries[id] = entry;
         Keys.Enqueue(id);
@@ -69,7 +71,7 @@ public static class PluginPreviewCache
         if (Entries.TryGetValue(key, out var entry))
             return entry;
 
-        var parts = key.Split(':');
+        var parts = key.Split('|');
         if (parts.Length >= 4 && parts[0].Equals("flow-preview", StringComparison.OrdinalIgnoreCase))
         {
             try

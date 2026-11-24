@@ -7,12 +7,11 @@ namespace Sox.App.Settings;
 
 public sealed partial class GeneralPage : Page
 {
-    private readonly UserSettings _settings;
+    private UserSettings _settings = UserSettings.Load();
     private bool _loading = true;
 
     public GeneralPage()
     {
-        _settings = UserSettings.Load();
         InitializeComponent();
 
         // The registry is the source of truth for startup, not the setting: a user who disabled the
@@ -27,7 +26,6 @@ public sealed partial class GeneralPage : Page
     private void OnStartupToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.StartWithWindows = StartupToggle.IsOn;
         StartupService.SetEnabled(StartupToggle.IsOn);
         Save();
     }
@@ -35,27 +33,36 @@ public sealed partial class GeneralPage : Page
     private void OnMinimizeToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.MinimizeToTrayOnStart = MinimizeToggle.IsOn;
         Save();
     }
 
     private void OnAutoUpdateToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.AutoCheckUpdates = AutoUpdateToggle.IsOn;
         Save();
     }
 
     private void OnTrayToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.HideTrayIcon = !TrayToggle.IsOn;
         Save();
     }
 
     private void Save()
     {
+        SyncLatest();
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
+    }
+
+    // Another process or page may have replaced the cached instance since this page was built. Adopt the
+    // live one and re-apply this page's controls before writing, so saving here never reverts their work.
+    private void SyncLatest()
+    {
+        _settings = UserSettings.Load();
+        _settings.StartWithWindows = StartupToggle.IsOn;
+        _settings.MinimizeToTrayOnStart = MinimizeToggle.IsOn;
+        _settings.AutoCheckUpdates = AutoUpdateToggle.IsOn;
+        _settings.HideTrayIcon = !TrayToggle.IsOn;
     }
 }

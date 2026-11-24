@@ -43,6 +43,23 @@ public sealed class DeltaOverlay
 
     public DeltaOverlay(Snapshot snapshot) => Snapshot = snapshot;
 
+    internal DeltaOverlay(Snapshot snapshot, DeltaOverlay carried)
+        : this(snapshot)
+    {
+        DeletedBase.UnionWith(carried.DeletedBase);
+        foreach (var pair in carried.BaseOverrides)
+            BaseOverrides[pair.Key] = pair.Value;
+        Added.AddRange(carried.Added);
+        foreach (var pair in carried.RenamedAway)
+            RenamedAway[pair.Key] = pair.Value;
+        foreach (var pair in carried.MetadataOverrides)
+            MetadataOverrides[pair.Key] = pair.Value;
+        foreach (var pair in carried._addedById)
+            _addedById[pair.Key] = pair.Value;
+        FileCountDelta = carried.FileCountDelta;
+        DirCountDelta = carried.DirCountDelta;
+    }
+
     public int VisibleAddedCount => Added.Count(r => !r.Removed);
     public int PendingChangeCount => DeletedBase.Count + BaseOverrides.Count + RenamedAway.Count + MetadataOverrides.Count + Added.Count;
 

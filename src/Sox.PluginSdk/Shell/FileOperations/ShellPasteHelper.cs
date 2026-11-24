@@ -93,6 +93,10 @@ public static class ShellPasteHelper
             }
 
             fileOp.PerformOperations();
+            // A cancelled move leaves the items already moved where they are -- IFileOperation has no
+            // rollback -- so at least say so instead of reporting a clean completion.
+            if (fileOp.GetAnyOperationsAborted())
+                Logger.Log($"[ShellPasteHelper] {(move ? "Move" : "Copy")} was aborted by the user; already-processed items were left in the destination.", LogLevel.Warn);
         }
         catch (Exception ex)
         {

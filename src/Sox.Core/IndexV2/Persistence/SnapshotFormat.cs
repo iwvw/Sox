@@ -23,7 +23,10 @@ internal static class SnapshotFormat
 {
     public const ulong Magic = 0x0000005844494C53; // "SLIDX\0\0\0" little-endian
     // Bumped 9 -> 10: recursive logical sizes support instant, index-only space analysis.
-    public const int Version = 10;
+    // Bumped 10 -> 11: the header carries a CRC32C of the section region (same-length corruption guard).
+    // A mismatch with an older file is NOT corruption -- the cache locators keep the file and simply
+    // rebuild instead of deleting it (see SnapshotFormat.TryReadHeaderFromFile).
+    public const int Version = 11;
     public const int SectionAlignment = 16;
 
     internal sealed class Meta
@@ -63,6 +66,9 @@ internal static class SnapshotFormat
         // equivalent, surfaced to the UI (e.g. "last refreshed" for a network drive).
         public DateTime LastUpdated;
         public long SectionsOffset;
+        // CRC32C of the section region [SectionsOffset, totalLength). Guards against same-length
+        // corruption (bit flips, bad drive cache) that every count/offset check above would happily pass.
+        public uint SectionsCrc32;
     }
 
     public static void WriteHeader(BinaryWriter writer, Meta meta)
@@ -81,6 +87,9 @@ internal static class SnapshotFormat
         writer.Write((byte)meta.SourceKind);
         writer.Write((byte)meta.IdKind);
         writer.Write(meta.VolumeSerialNumber);
+        // Placeholder for SectionsCrc32 -- positioned so the writer can seek back and fill it once the
+        // section region is on disk (see SnapshotWriter).
+        writer.Write(0u);
         writer.Write((ulong)meta.RootId);
         writer.Write((ulong)(meta.RootId >> 64));
         writer.Write(meta.JournalId);
@@ -102,6 +111,19 @@ internal static class SnapshotFormat
         meta.SectionsOffset = Align(stream.Position);
         while (stream.Position < meta.SectionsOffset)
             stream.WriteByte(0);
+    }
+
+    // Absolute file offset of the SectionsCrc32 field inside a written header. The field sits right after
+    // the three fixed bytes (SourceKind, IdKind, VolumeSerialNumber), so its position depends only on the
+    // lengths of the fixed-width prefix -- derived here instead of hard-coded by the writer.
+    public static long GetSectionsCrcFieldOffset(Meta meta)
+    {
+        var afterMagic = sizeof(ulong)      // Magic
+            + sizeof(int)                    // Version
+            + 10 * sizeof(int)               // RowCount .. TotalDirs (10 ints)
+            + sizeof(byte) + sizeof(byte)    // SourceKind, IdKind
+            + sizeof(uint);                  // VolumeSerialNumber
+        return afterMagic;
     }
 
     public static Meta ReadHeader(BinaryReader reader)
@@ -126,6 +148,7 @@ internal static class SnapshotFormat
             IdKind = (FileRecordIdKind)reader.ReadByte(),
             VolumeSerialNumber = reader.ReadUInt32(),
         };
+        meta.SectionsCrc32 = reader.ReadUInt32();
         var rootLow = reader.ReadUInt64();
         var rootHigh = reader.ReadUInt64();
         meta.RootId = new UInt128(rootHigh, rootLow);
@@ -203,6 +226,12 @@ internal static class SnapshotFormat
         {
             using var stream = File.OpenRead(path);
             using var reader = new BinaryReader(stream, NameEncoding);
+            if (stream.Length < 12)
+                return null; // too short to even carry magic+version -- treat as corrupt
+            var magic = reader.ReadUInt64();
+            var version = reader.ReadInt32();
+            if (magic != Magic || version != Version)
+                return null; // stale or foreign: callers must not delete it, a newer build may still read it
             return ReadHeader(reader);
         }
         catch (IOException)

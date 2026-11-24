@@ -92,10 +92,23 @@ public class PinyinAliasProvider : IAliasProvider, ITranslationProvider, IConfig
         if (!string.IsNullOrEmpty(simplified) && !string.Equals(simplified, text, StringComparison.Ordinal))
             yield return simplified;
     }
-    // Read per call rather than cached here: the cached results below outlive a settings change, which
-    // is exactly why the flag they were built with is remembered and the cache dropped when it flips.
-    private static bool ConvertEnabled => PluginSettingsService.GetSetting(
-        PinyinAliasConfigSchema.PluginId, PinyinAliasConfigSchema.ConvertSettingKey, true);
+    // Read through a slot that ResetResultCache clears, so a settings change still takes effect on the
+    // next call while the per-candidate hot path (every GetAliases for every keystroke) stops hitting
+    // PluginSettingsService, which deserializes JSON on the way.
+    private static int _convertEnabledSlot = -1;
+    private static bool ConvertEnabled
+    {
+        get
+        {
+            var slot = Volatile.Read(ref _convertEnabledSlot);
+            if (slot >= 0)
+                return slot != 0;
+            var value = PluginSettingsService.GetSetting(
+                PinyinAliasConfigSchema.PluginId, PinyinAliasConfigSchema.ConvertSettingKey, true);
+            Volatile.Write(ref _convertEnabledSlot, value ? 1 : 0);
+            return value;
+        }
+    }
 
     // Drops the live-path result cache so the next call regenerates from the current setting. The cache
     // is process-wide and keyed only by text, so a test that flips the setting between calls would
@@ -103,6 +116,7 @@ public class PinyinAliasProvider : IAliasProvider, ITranslationProvider, IConfig
     // than read here, so the next call always re-bakes once -- one extra regeneration, not a bug.
     internal static void ResetResultCache()
     {
+        Volatile.Write(ref _convertEnabledSlot, -1);
         lock (ResultCacheLock)
         {
             _resultCacheCur.Clear();

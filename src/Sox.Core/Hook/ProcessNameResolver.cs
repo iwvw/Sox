@@ -23,9 +23,15 @@ internal static class ProcessNameResolver
     // this long, a slot whose process has exited and whose id has been handed to something else is gone.
     private const int CacheLifetimeMs = 1000;
 
+    // The fallback route enumerates every process on the machine, so its result (including "no name")
+    // is held far longer than the one-second slot above: still correct for pid reuse in practice, and it
+    // keeps that enumeration off the per-keystroke path entirely.
+    private const int FailedLookupLifetimeMs = 10_000;
+
     private sealed record CachedPath(uint ProcessId, string ImagePath, long Ticks);
 
     private static CachedPath? _cache;
+    private static CachedPath? _failedLookups;
 
     /// <summary>
     /// Full path of the process's executable. False when it cannot be read -- the process has already
@@ -47,12 +53,18 @@ internal static class ProcessNameResolver
         if (cached is not null && cached.ProcessId == processId && Environment.TickCount64 - cached.Ticks < CacheLifetimeMs)
         {
             imagePath = cached.ImagePath;
-            return true;
+            return imagePath.Length > 0;
         }
 
         var path = queryImagePath(processId);
         if (path.Length == 0)
+        {
+            // Cache the failure too. Without this every keystroke re-opens a process that will never
+            // answer (protected/anti-cheat/system processes, or a recycled pid) -- a full process-list
+            // enumeration each time, on the low-level hook thread.
+            _cache = new CachedPath(processId, string.Empty, Environment.TickCount64);
             return false;
+        }
 
         _cache = new CachedPath(processId, path, Environment.TickCount64);
         imagePath = path;
@@ -89,17 +101,30 @@ internal static class ProcessNameResolver
         if (TryGetImagePath(processId, out var imagePath))
             return Path.GetFileNameWithoutExtension(imagePath);
 
-        // Opening a process can fail where the managed route still answers, since that one reads the
-        // system-wide process list rather than the process itself. Kept as a fallback -- just no longer
-        // the default, and disposed this time.
+        // The other route below enumerates the whole process list. That is acceptable once, but it must
+        // not happen per keystroke on the hook thread: it is gated behind a separate, much longer-lived
+        // memo, so a process whose image path is unreadable costs at most one enumeration per interval.
+        var now = Environment.TickCount64;
+        var failed = _failedLookups;
+        if (failed is not null && failed.ProcessId == processId && now - failed.Ticks < FailedLookupLifetimeMs)
+            return failed.ImagePath.Length > 0 ? Path.GetFileNameWithoutExtension(failed.ImagePath) : fallback;
+
         try
         {
             using var process = System.Diagnostics.Process.GetProcessById((int)processId);
-            return process.ProcessName;
+            var name = process.ProcessName;
+            if (name.Length > 0)
+            {
+                _failedLookups = new CachedPath(processId, name + ".exe", now);
+                return name;
+            }
         }
         catch
         {
-            return fallback;
+            // fall through to the recorded fallback
         }
+
+        _failedLookups = new CachedPath(processId, string.Empty, now);
+        return fallback;
     }
 }

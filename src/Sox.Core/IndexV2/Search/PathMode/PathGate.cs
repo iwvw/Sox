@@ -102,6 +102,11 @@ internal sealed class PathGate
 
     // String-segment verification for delta rows' parent paths (and delta-touched ancestor chains):
     // same right-to-left consumption over a split path, but with the patterns parsed once per query.
+    //
+    // Consumption must mirror Verify(): each path segment can satisfy AT MOST ONE query segment. The old
+    // loop advanced pIdx unconditionally after a match, which let one long segment swallow two query
+    // segments (q="a b" against a single "ab" segment), and let stray characters scattered across a
+    // segment-bounded fzf match satisfy a term that no single segment actually contained.
     public int VerifyPath(string path, SearchMatcher.Worker worker)
     {
         var pathSegments = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
@@ -115,8 +120,14 @@ internal sealed class PathGate
             {
                 totalScore += score;
                 qIdx--;
+                pIdx--;
             }
-            pIdx--;
+            else
+            {
+                // This segment does not answer the pending term: skip the segment and try the term
+                // against the next ancestor, never letting it absorb it either.
+                pIdx--;
+            }
         }
         return qIdx < 0 ? totalScore : 0;
     }

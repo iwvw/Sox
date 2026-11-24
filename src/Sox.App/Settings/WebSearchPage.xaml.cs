@@ -11,7 +11,7 @@ namespace Sox.App.Settings;
 
 public sealed partial class WebSearchPage : Page
 {
-    private readonly UserSettings _settings;
+    private UserSettings _settings;
     private readonly ObservableCollection<EngineRow> _rows = new();
 
     public WebSearchPage()
@@ -27,9 +27,9 @@ public sealed partial class WebSearchPage : Page
 
     private void OnRowToggled(object sender, RoutedEventArgs e)
     {
-        if (sender is CheckBox { DataContext: EngineRow row })
+        if (sender is CheckBox box && box.DataContext is EngineRow row)
         {
-            row.Model.Enabled = row.Enabled;
+            row.Model.Enabled = box.IsChecked ?? false;
             Save();
         }
     }
@@ -188,6 +188,12 @@ public sealed partial class WebSearchPage : Page
 
     private void Save()
     {
+        var live = UserSettings.Load();
+        if (!ReferenceEquals(live, _settings))
+        {
+            live.WebSearchEngines = _settings.WebSearchEngines;
+            _settings = live;
+        }
         _settings.Save();
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();
     }

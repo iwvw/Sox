@@ -17,6 +17,11 @@ public static class SearchHistoryStore
     private static Dictionary<string, List<StoredEntry>>? _buckets;
     private static Dictionary<string, double>? _priorityCache;
     private static Dictionary<string, int>? _penaltyCache;
+    // path -> keyword, so recording does not have to scan every bucket for an existing entry. Rebuilt
+    // whenever the cache is (re)loaded and kept in step by Record/Remove.
+    private static Dictionary<string, string>? _pathIndex;
+    private static readonly System.Threading.Timer PersistTimer = new(_ => FlushPending(), null, Timeout.Infinite, Timeout.Infinite);
+    private static bool _persistPending;
 
     /// <summary>What <see cref="Snapshot"/> returns before the store has any entries at all.</summary>
     private static readonly IReadOnlyDictionary<string, double> EmptyPriorities =
@@ -56,7 +61,19 @@ public static class SearchHistoryStore
         // heavily-indexed network share -- callers invoke this synchronously right before/after launching
         // a result, often still on the UI thread, so recording history must not be able to freeze that.
         var enabled = UserSettings.Load().EnableHistory;
-        Task.Run(() => RecordCore(keyword.Trim(), path, kind, enabled));
+        Task.Run(() =>
+        {
+            try
+            {
+                RecordCore(keyword.Trim(), path, kind, enabled);
+            }
+            catch (Exception ex)
+            {
+                // An unobserved task exception here would surface as a crash report for something as
+                // incidental as a history write.
+                Logger.Log($"[SearchHistoryStore] Failed to record history: {ex.Message}", LogLevel.Error);
+            }
+        });
     }
 
     private static void RecordCore(string keyword, string path, HistoryEntryKind kind, bool enabled)
@@ -71,8 +88,9 @@ public static class SearchHistoryStore
             EnsureCacheNoLock();
             var buckets = _buckets!;
 
-            var entryExists = buckets.Values.Any(list => list.Any(e =>
-                e.Path.Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)));
+            // O(1) existence check through the path index; the old code scanned every bucket and every
+            // entry on each recorded open, then rewrote the whole file.
+            var entryExists = _pathIndex!.ContainsKey(normalizedPath);
             if (!HistoryRecordingPolicy.ShouldRecord(enabled, entryExists))
                 return;
 
@@ -86,10 +104,12 @@ public static class SearchHistoryStore
                 buckets[keyword] = list = new List<StoredEntry>();
 
             list.Insert(0, new StoredEntry(normalizedPath, kind, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), previousCount + 1));
+            _pathIndex![normalizedPath] = keyword;
             if (list.Count > SearchHistoryBucketSupport.MaxEntriesPerKeyword)
                 list.RemoveRange(SearchHistoryBucketSupport.MaxEntriesPerKeyword, list.Count - SearchHistoryBucketSupport.MaxEntriesPerKeyword);
 
-            PersistNoLock();
+            TrimToGlobalLimit(buckets);
+            SchedulePersistNoLock();
             _priorityCache = BuildPriorityCache(buckets);
         }
 
@@ -102,13 +122,14 @@ public static class SearchHistoryStore
     // Record can continue the count instead of restarting it.
     private static int RemovePathFromAllBuckets(Dictionary<string, List<StoredEntry>> buckets, string path)
     {
+        _pathIndex?.Remove(path);
         var previousCount = 0;
         List<string>? emptied = null;
         foreach (var (keyword, list) in buckets)
         {
             var removed = list.Find(e => e.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
             if (removed != default)
-                previousCount = removed.Count;
+                previousCount = Math.Max(previousCount, removed.Count);
             list.RemoveAll(e => e.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
             if (list.Count == 0)
                 (emptied ??= new List<string>()).Add(keyword);
@@ -117,6 +138,54 @@ public static class SearchHistoryStore
             foreach (var keyword in emptied)
                 buckets.Remove(keyword);
         return previousCount;
+    }
+
+    // Buckets are capped per keyword, but the key is the raw query string, so every distinct query that
+    // ever opened something is a new bucket that never expires. Cap the total too, evicting the oldest
+    // entries across the whole store.
+    private static void TrimToGlobalLimit(Dictionary<string, List<StoredEntry>> buckets)
+    {
+        var total = buckets.Sum(b => b.Value.Count);
+        if (total <= MaxTotalEntries)
+            return;
+
+        var oldest = buckets
+            .SelectMany(b => b.Value.Select(e => (Keyword: b.Key, Entry: e)))
+            .OrderBy(x => x.Entry.Time)
+            .Take(total - MaxTotalEntries)
+            .Select(x => (x.Keyword, x.Entry.Path))
+            .ToList();
+
+        foreach (var (keyword, path) in oldest)
+        {
+            if (!buckets.TryGetValue(keyword, out var list))
+                continue;
+            list.RemoveAll(e => e.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            _pathIndex?.Remove(path);
+            if (list.Count == 0)
+                buckets.Remove(keyword);
+        }
+    }
+
+    private const int MaxTotalEntries = 500;
+
+    // Writing the whole file (indented JSON, hundreds of entries) plus rotating a backup on every opened
+    // item must not sit on the search gate that every keystroke takes. Coalesce bursts instead.
+    private static void SchedulePersistNoLock()
+    {
+        _persistPending = true;
+        PersistTimer.Change(500, Timeout.Infinite);
+    }
+
+    private static void FlushPending()
+    {
+        lock (Gate)
+        {
+            if (!_persistPending)
+                return;
+            _persistPending = false;
+            PersistNoLock();
+        }
     }
 
     /// <summary>Behaviour score lookup -- keyed by the bare target path, regardless of which keyword it's recorded under. 0 when unknown.</summary>
@@ -165,6 +234,7 @@ public static class SearchHistoryStore
         lock (Gate)
         {
             _buckets = BuildBuckets(validated);
+            _pathIndex = BuildPathIndex(_buckets);
             PersistNoLock();
             _priorityCache = BuildPriorityCache(_buckets);
         }
@@ -260,7 +330,17 @@ public static class SearchHistoryStore
             return;
 
         _buckets = LoadNoLock();
+        _pathIndex = BuildPathIndex(_buckets);
         _priorityCache = BuildPriorityCache(_buckets);
+    }
+
+    private static Dictionary<string, string> BuildPathIndex(Dictionary<string, List<StoredEntry>> buckets)
+    {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (keyword, list) in buckets)
+            foreach (var entry in list)
+                index[entry.Path] = keyword;
+        return index;
     }
 
     private static void EnsurePenaltyCacheNoLock()

@@ -14,7 +14,7 @@ internal readonly record struct PathUniqueMatch(int Uid, FzfPatternResult Match,
 // old filePattern == null branch.
 internal static class SearchMatcherPath
 {
-    internal static List<PathUniqueMatch> MatchUniquesForPath(Snapshot snapshot, FzfPattern? pattern)
+    internal static List<PathUniqueMatch> MatchUniquesForPath(Snapshot snapshot, FzfPattern? pattern, CancellationToken token = default)
     {
         var merged = new List<PathUniqueMatch>();
         if (pattern == null)
@@ -38,6 +38,7 @@ internal static class SearchMatcherPath
         Parallel.For(
             0,
             Math.Max(chunkCount, 1),
+            new ParallelOptions { CancellationToken = token },
             SearchMatcher.RentWorker,
             (chunk, _, worker) =>
             {
@@ -47,6 +48,7 @@ internal static class SearchMatcherPath
                 var masks = snapshot.UniqueMasks;
                 for (var uid = start; uid < end; uid++)
                 {
+                    token.ThrowIfCancellationRequested();
                     if (ctx.CanFilter && ((masks[uid] & ctx.RequiredMask) != ctx.RequiredMask || !SearchMatcher.PassesOrSets(masks[uid], ctx.OrSetMasks)))
                         continue;
                     PathMatchOne(snapshot, ctx, uid, worker, hits);

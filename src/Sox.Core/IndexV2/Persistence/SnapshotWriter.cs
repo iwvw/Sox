@@ -101,7 +101,8 @@ public static class SnapshotWriter
             // Union of name + alias chars: over-admits, never rejects a real match -- the
             // structural equivalent of the old engine bucketing rows under alias chars.
             var mask = FzfAlgorithm.GetCharMask(uniqueNames[uid]);
-            aliasResults[uid] = AliasGenerationUtf8.Generate(uniqueNames[uid], ref mask);
+            AliasGenerationUtf8.TryGetCached(uniqueNames[uid], ref mask, out var aliases);
+            aliasResults[uid] = aliases;
             uniqueMasks[uid] = mask;
         });
 
@@ -256,6 +257,35 @@ public static class SnapshotWriter
                 SnapshotWriterOps.WriteSection(stream, offsets, SnapshotSection.OrphanFrns, MemoryMarshal.AsBytes(CollectionsMarshal.AsSpan(orphanFrns)));
                 SnapshotWriterOps.WriteSection(stream, offsets, SnapshotSection.UniqueAsciiBits, MemoryMarshal.AsBytes(asciiBits));
                 stream.SetLength(totalLength);
+
+                // Fill in the section CRC now that the region is complete. The file was just written, so
+                // this read is served from the OS cache -- it costs a pass over the bytes, not a disk trip.
+                stream.Position = meta.SectionsOffset;
+                var crcBuffer = System.Buffers.ArrayPool<byte>.Shared.Rent(1 << 16);
+                try
+                {
+                    var crc = 0u;
+                    long remaining = totalLength - meta.SectionsOffset;
+                    while (remaining > 0)
+                    {
+                        var want = (int)Math.Min(crcBuffer.Length, remaining);
+                        var read = stream.Read(crcBuffer, 0, want);
+                        if (read <= 0)
+                            throw new IOException($"Snapshot write: short read while checksumming '{temp}'.");
+                        crc = SnapshotCrc32.Continue(crc, crcBuffer.AsSpan(0, read));
+                        remaining -= read;
+                    }
+                    var final = crc;
+                    var field = new byte[4];
+                    SnapshotCrc32.WriteStored(field, final);
+                    stream.Position = SnapshotFormat.GetSectionsCrcFieldOffset(meta);
+                    stream.Write(field);
+                }
+                finally
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(crcBuffer);
+                }
+
                 // Disposing the stream flushes to the OS cache, not to the platter, and the File.Replace
                 // that follows is a namespace operation that can reach the disk first -- a power loss
                 // then leaves the live path pointing at a zero-length or torn snapshot.

@@ -238,9 +238,10 @@ public static class Logger
         if (writer.BaseStream.Length >= RollOverSizeBytes)
         {
             // The cap used to be looked at only at init, so one long service run grew the file without
-            // bound. It is checked per line now; a roll-over truncates, matching what a restart did before.
-            writer = OpenWriter(append: false);
-            writer.Write($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Log rolled over ({Path.GetFileName(_logPath)})\n");
+            // bound. It is checked per line now. Rolling over used to truncate in place, which threw away
+            // exactly the window that led up to a problem; move it aside instead (one previous file is
+            // kept) and start a fresh one.
+            writer = RollOver(writer);
         }
 
         try
@@ -253,6 +254,31 @@ public static class Logger
             // not stay dead: drop the handle and let the next line take the per-line path.
             CloseWriter();
             File.AppendAllText(_logPath, line);
+        }
+    }
+
+    // Moves the full log aside (keeping exactly one previous file) and reopens a fresh one. Best effort:
+    // if the move fails the old truncate behaviour is the fallback, since a full log must not stop logging.
+    private static StreamWriter RollOver(StreamWriter writer)
+    {
+        var stamp = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}]";
+        try
+        {
+            writer.Flush();
+            writer.Dispose();
+            var previous = _logPath + ".1";
+            if (File.Exists(previous))
+                File.Delete(previous);
+            File.Move(_logPath, previous);
+            var fresh = OpenWriter(append: true);
+            fresh.WriteLine($"{stamp} Log rolled over ({Path.GetFileName(_logPath)}); previous log kept as {Path.GetFileName(previous)}");
+            return fresh;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var fallback = OpenWriter(append: false);
+            fallback.WriteLine($"{stamp} Log rolled over in place ({Path.GetFileName(_logPath)}); move failed: {ex.Message}");
+            return fallback;
         }
     }
 

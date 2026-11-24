@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sox.App.Materials;
@@ -10,6 +11,7 @@ public sealed partial class AppearancePage : Page
 {
     private readonly ThemeService _themeService;
     private UserSettings _settings;
+    private DispatcherQueueTimer? _commitTimer;
     private bool _loading = true;
 
     public AppearancePage(ThemeService themeService)
@@ -39,7 +41,6 @@ public sealed partial class AppearancePage : Page
     private void OnThemeFollowSystemToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.ThemeFollowSystem = ThemeFollowSystemToggle.IsOn;
         DarkThemeToggle.IsEnabled = !ThemeFollowSystemToggle.IsOn;
         Save();
     }
@@ -47,7 +48,6 @@ public sealed partial class AppearancePage : Page
     private void OnDarkThemeToggled(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        _settings.Theme = DarkThemeToggle.IsOn ? "Dark" : "Light";
         Save();
     }
 
@@ -68,26 +68,49 @@ public sealed partial class AppearancePage : Page
     private void OnTextChangedCommit(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
+
+        // Typing "1200" used to mean four full settings writes (each rotating five backups and
+        // rebuilding the theme). Wait for a pause; a commit on focus loss is not needed because the
+        // debounce fires even if focus moves on.
+        _commitTimer ??= DispatcherQueue.CreateTimer();
+        _commitTimer.Interval = TimeSpan.FromMilliseconds(400);
+        _commitTimer.IsRepeating = false;
+        _commitTimer.Tick -= OnCommitTimerTick;
+        _commitTimer.Tick += OnCommitTimerTick;
+        _commitTimer.Start();
+    }
+
+    private void OnCommitTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
         Save();
     }
 
     private void Save()
     {
+        _settings = UserSettings.Load();
         if (int.TryParse(SearchBarWidthBox.Text, out var w))
         {
-            _settings.SearchWindow.SearchBarWidth = w;
+            _settings.SearchWindow.SearchBarWidth = Math.Clamp(w, MinSearchBarWidth, MaxSearchBarWidth);
         }
 
-        if (int.TryParse(PreviewWidthBox.Text, out var pw))
+        if (int.TryParse(PreviewWidthBox.Text, out var pw) && pw > 0)
         {
-            _settings.PreviewWindow.Width = pw;
+            _settings.PreviewWindow.Width = Math.Clamp(pw, MinPreviewWidth, MaxPreviewWidth);
         }
 
+        _settings.ThemeFollowSystem = ThemeFollowSystemToggle.IsOn;
+        _settings.Theme = DarkThemeToggle.IsOn ? "Dark" : "Light";
         _settings.Save();
         _themeService.Reload();
         SettingsChanged?.Invoke();
         RaiseSettingsChanged();
     }
+
+    private const int MinSearchBarWidth = 320;
+    private const int MaxSearchBarWidth = 1600;
+    private const int MinPreviewWidth = 200;
+    private const int MaxPreviewWidth = 1200;
 
     private static void RaiseSettingsChanged() =>
         (Microsoft.UI.Xaml.Application.Current as App)?.RaiseSettingsChanged();

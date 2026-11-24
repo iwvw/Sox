@@ -2,7 +2,7 @@ namespace Sox.Core.Hook.InlineSearch;
 
 public sealed class GlobalHotkeyDetector
 {
-    private readonly UserSettings _settings;
+    private UserSettings _settings;
     private readonly ExplorerTracker _explorerTracker;
 
     private readonly ModifierDoubleTapDetector _toggleWindowTapDetector = new();
@@ -14,6 +14,12 @@ public sealed class GlobalHotkeyDetector
         _settings = settings;
         _explorerTracker = explorerTracker;
     }
+
+    // Applies reloaded settings in place. Replacing the detector object instead would split the
+    // modifierKeyState: a key-down recorded by the old instance and its key-up delivered to the new one
+    // leaves the new instance believing that modifier is still held, and every hotkey then silently
+    // fails its exact-match test until the key is pressed and released again.
+    public void ApplySettings(UserSettings settings) => _settings = settings;
 
     public void OnKeyDown(int vkCode) => _modifierKeyState.OnKeyDown(vkCode);
 

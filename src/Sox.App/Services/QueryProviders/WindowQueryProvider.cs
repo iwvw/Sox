@@ -130,6 +130,6 @@ internal sealed class WindowQueryProvider : IQueryProvider
             return 0;
         }
 
-        return Sox.Core.SearchIndex.FuzzyMatcher.IsMatch(query, title) ? 1 : -1;
+        return Sox.Core.SearchIndex.FuzzyMatcher.IsMatchFreeText(query, title) ? 1 : -1;
     }
 }

@@ -22,12 +22,31 @@
         "-r",
         "win-x64",
         "-c",
-        "Debug"
+        "Debug",
+        "-p:Platform=x64"
       ],
       "dependsOn": "stop-sox",
       "problemMatcher": "$msCompile",
       "group": {
         "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/tests/Sox.Core.Tests/Sox.Core.Tests.csproj",
+        "-c",
+        "Debug",
+        "--nologo"
+      ],
+      "dependsOn": "stop-sox",
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "test",
         "isDefault": true
       }
     },

@@ -27,6 +27,26 @@ public static class SearchStreamPump
             FullMode = BoundedChannelFullMode.Wait
         });
 
+    // Backpressure-preserving write for the producer-side callbacks. The old code blocked the scan thread
+    // on WriteAsync(...).GetResult(), which deadlocked on cancellation: once the reader stopped draining,
+    // the wait never returned. Waiting here is bounded by the query token, and a completed
+    // channel (client gone) simply drops the result.
+    private static void TryWrite(Channel<SearchResult> channel, SearchResult result, CancellationToken token)
+    {
+        if (token.IsCancellationRequested)
+            return;
+        try
+        {
+            channel.Writer.WriteAsync(result, token).AsTask().GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ChannelClosedException)
+        {
+        }
+    }
+
     public static async Task RunAsync(SearchEngine? engine, SearchRequestMessage msg, Stream stream, CancellationToken token)
     {
         Logger.Log($"[SearchStreamPump] Starting query: '{msg.Query}', limit={msg.Limit}, appLimit={msg.AppLimit}, directoryFilter='{msg.DirectoryFilter}'", LogLevel.Debug);
@@ -83,7 +103,7 @@ public static class SearchStreamPump
                         // conclude the directory is empty.
                         notIndexed = engine == null || !engine.EnumerateDirectory(msg.DirectoryFilter ?? string.Empty,
                             msg.Recursive, msg.Query ?? "*", msg.Limit,
-                            result => channel.Writer.WriteAsync(result, queryToken).AsTask().GetAwaiter().GetResult(), queryToken);
+                            result => TryWrite(channel, result, queryToken), queryToken);
                         channel.Writer.TryComplete();
                         return;
                     }
@@ -91,7 +111,7 @@ public static class SearchStreamPump
                     var directory = msg.Id == SearchRequestId.SearchDir ? msg.DirectoryFilter : null;
 
                     engine?.SearchStreaming(msg.Query ?? string.Empty, msg.Limit, msg.AppLimit, directory,
-                        result => channel.Writer.WriteAsync(result, queryToken).AsTask().GetAwaiter().GetResult(), queryToken,
+                        result => TryWrite(channel, result, queryToken), queryToken,
                         msg.FileNameFilter);
                     channel.Writer.TryComplete();
                 }

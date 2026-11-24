@@ -69,8 +69,10 @@ public class KeyboardHookService : IDisposable
     }
     public void ReloadSettings()
     {
-        _settings = UserSettings.ForceReload();
-        _hotkeyDetector = new GlobalHotkeyDetector(_settings, _explorerTracker);
+        var reloaded = UserSettings.ForceReload();
+        Volatile.Write(ref _settings, reloaded);
+        var detector = Volatile.Read(ref _hotkeyDetector);
+        detector.ApplySettings(reloaded);
         Logger.Log("[KeyboardHookService] Hotkey settings reloaded.", LogLevel.Info);
     }
     // Wired from MouseHookService.OnRightButtonDown, and also called directly below for the VK_APPS

@@ -156,8 +156,7 @@ internal static class NetworkDriveCacheLocator
 
             if (meta == null)
             {
-                TryDelete(path);
-                continue;
+                continue; // stale version or a foreign/partial file -- never delete it; a rebuild overwrites it
             }
             if (meta.SourceKind == FileRecordSourceKind.NetworkMappedDrive)
                 yield return new StoreSummary(meta.SourceKey, meta.FileSystemType, meta.SourceKind);

@@ -29,6 +29,38 @@ internal static class AliasGenerationUtf8
 
     [ThreadStatic] private static AliasByteSink? _sink;
 
+    // Aliases depend only on the name, and compaction re-generates them for every unique name on each
+    // pass even though most never changed (this is the documented CPU hot spot on CJK-heavy volumes).
+    // Memoising across calls turns repeat compactions into lookups. Bounded so it cannot grow forever;
+    // a clear is rare and costs one regeneration pass.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (Result? Aliases, ulong Mask)> Memo = new(StringComparer.Ordinal);
+    private const int MaxMemoEntries = 200_000;
+
+    // Memoised Generate: returns the aliases AND the char mask Generate produced, since the mask includes
+    // the alias characters and dropping it would make alias matches miss.
+    public static bool TryGetCached(string name, ref ulong mask, out Result? aliases)
+    {
+        if (string.IsNullOrEmpty(name) || AliasProviderRegistry.HasInvalidUtf16(name) || !AliasProviderRegistry.HasNonAscii(name))
+        {
+            aliases = null;
+            return true;
+        }
+
+        if (Memo.TryGetValue(name, out var cached))
+        {
+            mask |= cached.Mask;
+            aliases = cached.Aliases;
+            return true;
+        }
+
+        var computed = Generate(name, ref mask);
+        if (Memo.Count >= MaxMemoEntries)
+            Memo.Clear();
+        Memo.TryAdd(name, (computed, mask));
+        aliases = computed;
+        return true;
+    }
+
     // Generates aliases for one name, OR-ing each alias's char mask into `mask`. Returns null when
     // the name yields no aliases (the common pure-ASCII case exits on the vectorized gate).
     public static Result? Generate(string name, ref ulong mask)

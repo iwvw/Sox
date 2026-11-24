@@ -19,7 +19,8 @@ internal static class IndexBuilder
         Action<string>? onDriveCancelled = null,
         Func<string, FileRecordStore?>? getPreviousStore = null,
         Action<string, FileRecordStore, NetworkDriveWalkStats, CancellationToken>? onDriveCheckpoint = null,
-        Func<string, CancellationToken, DriveIndexRemovalScope?>? createDriveRemovalScope = null)
+        Func<string, CancellationToken, DriveIndexRemovalScope?>? createDriveRemovalScope = null,
+        Action<string>? onDriveFailed = null)
     {
         getToken ??= _ => CancellationToken.None;
         getPreviousStore ??= _ => null;
@@ -95,6 +96,8 @@ internal static class IndexBuilder
             else
             {
                 Logger.Log($"[UsnIndexer] Drive {drive} indexing failed.", LogLevel.Error);
+                setDriveState(drive, "failed");
+                onDriveFailed?.Invoke(drive);
             }
         }
 

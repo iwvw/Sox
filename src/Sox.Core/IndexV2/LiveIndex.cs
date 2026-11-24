@@ -111,6 +111,7 @@ public sealed class LiveIndex : IDisposable
             // Windows/filesystem combinations (seen reliably on a Windows 10 VM indexing a network share,
             // not on Windows 11), leaving an orphaned .bak file this exact process still holds open.
             var mergedStore = Compaction.BuildMergedStore(_snapshot!, _delta!, stamp);
+            var pendingDelta = _delta!;
             _snapshot!.Dispose();
             _snapshot = null;
             _delta = null;
@@ -130,9 +131,22 @@ public sealed class LiveIndex : IDisposable
                 // LiveIndex serving a valid snapshot before propagating the failure.
                 try
                 {
-                    _snapshot = Snapshot.Open(path);
-                    _delta = new DeltaOverlay(_snapshot);
-                    Logger.Log($"LiveIndex.Compact failed to write/reopen '{path}', recovered the on-disk snapshot: {originalException.Message}", LogLevel.Error);
+                    var reopened = Snapshot.Open(path);
+                    if (pendingDelta.PendingChangeCount > 0)
+                    {
+                        // The write failed, so the on-disk snapshot predates the pending delta. Carrying
+                        // those changes onto the reopened snapshot keeps them visible; dropping them would
+                        // lose them for good, as the journal watermark has already moved past them.
+                        _snapshot = reopened;
+                        _delta = new DeltaOverlay(reopened, pendingDelta);
+                        Logger.Log($"LiveIndex.Compact failed to write '{path}', carried the pending delta ({pendingDelta.PendingChangeCount} changes) onto the on-disk snapshot: {originalException.Message}", LogLevel.Error);
+                    }
+                    else
+                    {
+                        _snapshot = reopened;
+                        _delta = new DeltaOverlay(_snapshot);
+                        Logger.Log($"LiveIndex.Compact failed to write/reopen '{path}', recovered the on-disk snapshot: {originalException.Message}", LogLevel.Error);
+                    }
                 }
                 catch (Exception reopenException)
                 {

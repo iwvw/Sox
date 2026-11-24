@@ -19,9 +19,12 @@ public static class UpdateRelaunchMarker
 {
     /// <summary>
     /// How old a note may be and still be acted on. A leftover from an update that died would otherwise
-    /// launch the App at some unrelated service start much later.
+    /// launch the App at some unrelated service start much later. This has to cover the whole update
+    /// script -- waiting for the App to exit (polled once a second), stopping the service (up to 30s),
+    /// the robocopy file swap and restarting the service -- which can exceed five minutes on a slow disk,
+    /// and the note is dropped silently when it does, leaving the user with no App at all.
     /// </summary>
-    internal static readonly TimeSpan FreshFor = TimeSpan.FromMinutes(5);
+    internal static readonly TimeSpan FreshFor = TimeSpan.FromHours(1);
 
     private static string FilePath => Path.Combine(Logger.SharedDataDir, "update-relaunch");
 

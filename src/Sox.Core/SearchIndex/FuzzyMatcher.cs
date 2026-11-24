@@ -31,6 +31,21 @@ public static class FuzzyMatcher
         return IsMatch(fzf, text);
     }
 
+    // Same matching, but never interprets a leading "<letter>:" as a drive spec. Use this for free-form
+    // text that has nothing to do with drives (app names and the like): under the file-search parse,
+    // a query like "e:" strips to zero terms and matches no candidate at all, so every app vanishes.
+    public static bool IsMatchFreeText(string pattern, string text)
+    {
+        if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(text))
+            return false;
+
+        var fzf = FzfPattern.ParseText(pattern);
+        if (fzf.IsEmpty)
+            return false;
+
+        return IsMatch(fzf, text);
+    }
+
     // Overload for callers that already hold the parsed pattern -- avoids re-parsing (and re-running
     // every registered alias provider's GetQueryForms) per candidate when the same query is tested
     // against many texts. The empty-pattern guard above stays on the string overload: a caller holding

@@ -119,6 +119,12 @@ internal static class DirectoryFilterResolver
 
     private static int FindRootRow(Snapshot snapshot)
     {
+        // Both are equivalent in practice (the root row is the one flagged SourceRoot), but the id lookup
+        // is a binary search over the id column instead of a linear scan of every row on each filter query.
+        var byId = snapshot.FirstRowForId(snapshot.RootId);
+        if (byId >= 0 && (snapshot.Flags[byId] & (ushort)FileRecordFlags.SourceRoot) != 0)
+            return byId;
+
         for (var row = 0; row < snapshot.Count; row++)
             if ((snapshot.Flags[row] & (ushort)FileRecordFlags.SourceRoot) != 0)
                 return row;

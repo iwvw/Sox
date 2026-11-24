@@ -783,6 +783,7 @@ public sealed partial class InlineSearchWindow : WindowEx
         _searchCts?.Dispose();
         _searchCts = new CancellationTokenSource();
         var token = _searchCts.Token;
+        var generation = token;
 
         // Same lifecycle as the spotlight: the cache dedupes the repeated throttled snapshots of ONE
         // search, then is cleared for the next query so each row's highlight uses the current term.
@@ -803,7 +804,7 @@ public sealed partial class InlineSearchWindow : WindowEx
             // those disk reads blocked every keystroke. The callback marshals back via the dispatcher.
             await Task.Run(() => _searchHost.SearchStreamingAsync(
                 query,
-                list => DispatcherQueue.TryEnqueue(() => ApplyResults(query, list)),
+                list => DispatcherQueue.TryEnqueue(() => ApplyResults(query, list, generation)),
                 maxResults: MaxResults,
                 throttleMs: 25));
         }
@@ -816,9 +817,13 @@ public sealed partial class InlineSearchWindow : WindowEx
         }
     }
 
-    private void ApplyResults(string query, IReadOnlyList<SearchResult> list)
+    private void ApplyResults(string query, IReadOnlyList<SearchResult> list, CancellationToken generation)
     {
-        if (!string.Equals(query, SearchBox.Text.Trim(), StringComparison.Ordinal))
+        // A superseded search can still deliver a snapshot after the next one started (the throttle flush
+        // is queued on the dispatcher). Comparing the text alone misses the A -> B -> A case, so also drop
+        // anything whose token has already been cancelled.
+        if (generation.IsCancellationRequested
+            || !string.Equals(query, SearchBox.Text.Trim(), StringComparison.Ordinal))
         {
             return;
         }
