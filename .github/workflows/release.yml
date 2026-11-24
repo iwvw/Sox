@@ -21,8 +21,27 @@ env:
   CONFIGURATION: Release
 
 jobs:
+  # Release workflow 只 build + 打包,不跑测试,导致坏的二进制照样能发布(0.4.2 就是这样发出去的)。
+  # 这里先跑门禁:构建产物有任何一步等它通过,测试挂了就发不出包。
+  test:
+    name: Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Test
+        shell: pwsh
+        run: dotnet test Sox.slnx -c Release --nologo
+
   build:
     name: Build (${{ matrix.arch }})
+    needs: test
     runs-on: windows-latest
     strategy:
       fail-fast: false
