@@ -71,7 +71,10 @@ internal static class SnapshotFormat
         public uint SectionsCrc32;
     }
 
-    public static void WriteHeader(BinaryWriter writer, Meta meta)
+    // Returns the file offset of the SectionsCrc32 placeholder this writes, so the writer can seek back
+    // and fill it in without re-deriving the header layout (duplicating that arithmetic is how the field
+    // ended up written four bytes past its slot).
+    public static long WriteHeader(BinaryWriter writer, Meta meta)
     {
         writer.Write(Magic);
         writer.Write(Version);
@@ -87,8 +90,7 @@ internal static class SnapshotFormat
         writer.Write((byte)meta.SourceKind);
         writer.Write((byte)meta.IdKind);
         writer.Write(meta.VolumeSerialNumber);
-        // Placeholder for SectionsCrc32 -- positioned so the writer can seek back and fill it once the
-        // section region is on disk (see SnapshotWriter).
+        var crcOffset = writer.BaseStream.Position;
         writer.Write(0u);
         writer.Write((ulong)meta.RootId);
         writer.Write((ulong)(meta.RootId >> 64));
@@ -103,6 +105,7 @@ internal static class SnapshotFormat
         writer.Write(meta.LastUpdated.ToUniversalTime().Ticks);
         // SectionsOffset is derived, not stored: the reader recomputes it from its own stream position
         // after the variable-length strings, then aligns -- see FinishHeader/ReadHeader staying in sync.
+        return crcOffset;
     }
 
     // Pads the stream from the end of the header to the aligned section base and records it in meta.
@@ -111,19 +114,6 @@ internal static class SnapshotFormat
         meta.SectionsOffset = Align(stream.Position);
         while (stream.Position < meta.SectionsOffset)
             stream.WriteByte(0);
-    }
-
-    // Absolute file offset of the SectionsCrc32 field inside a written header. The field sits right after
-    // the three fixed bytes (SourceKind, IdKind, VolumeSerialNumber), so its position depends only on the
-    // lengths of the fixed-width prefix -- derived here instead of hard-coded by the writer.
-    public static long GetSectionsCrcFieldOffset(Meta meta)
-    {
-        var afterMagic = sizeof(ulong)      // Magic
-            + sizeof(int)                    // Version
-            + 10 * sizeof(int)               // RowCount .. TotalDirs (10 ints)
-            + sizeof(byte) + sizeof(byte)    // SourceKind, IdKind
-            + sizeof(uint);                  // VolumeSerialNumber
-        return afterMagic;
     }
 
     public static Meta ReadHeader(BinaryReader reader)

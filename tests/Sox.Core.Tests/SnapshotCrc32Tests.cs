@@ -43,14 +43,4 @@ public class SnapshotCrc32Tests
 
         Assert.NotEqual(original, SnapshotCrc32.Compute(data));
     }
-
-    [Fact]
-    public void CrcFieldOffset_IsStableAndInsideTheHeader()
-    {
-        var meta = new SnapshotFormat.Meta { SourceKey = "test" };
-        var offset = SnapshotFormat.GetSectionsCrcFieldOffset(meta);
-
-        // Magic(8) + Version(4) + ten ints(40) + two bytes(2) + uint(4) = 58.
-        Assert.Equal(58, offset);
-    }
 }

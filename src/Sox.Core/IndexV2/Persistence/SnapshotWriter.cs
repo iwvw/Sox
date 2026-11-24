@@ -226,10 +226,13 @@ public static class SnapshotWriter
         // this exact temp file at once.
         lock (GetPathLock(path))
         {
-            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
+            // ReadWrite, not Write: the section CRC below is computed by reading the region back off this
+            // same stream (it was just written, so the bytes come from the OS cache, not the disk). A
+            // write-only stream throws NotSupportedException on Read, which failed the whole index build.
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1 << 20))
             {
                 using var writer = new BinaryWriter(stream, SnapshotFormat.NameEncoding, leaveOpen: true);
-                SnapshotFormat.WriteHeader(writer, meta);
+                var crcFieldOffset = SnapshotFormat.WriteHeader(writer, meta);
                 SnapshotFormat.FinishHeader(stream, meta);
                 var offsets = SnapshotFormat.ComputeSectionOffsets(meta, out var totalLength);
 
@@ -257,6 +260,8 @@ public static class SnapshotWriter
                 SnapshotWriterOps.WriteSection(stream, offsets, SnapshotSection.OrphanFrns, MemoryMarshal.AsBytes(CollectionsMarshal.AsSpan(orphanFrns)));
                 SnapshotWriterOps.WriteSection(stream, offsets, SnapshotSection.UniqueAsciiBits, MemoryMarshal.AsBytes(asciiBits));
                 stream.SetLength(totalLength);
+                // Flush buffered section writes so the read-back below observes them on this handle.
+                stream.Flush();
 
                 // Fill in the section CRC now that the region is complete. The file was just written, so
                 // this read is served from the OS cache -- it costs a pass over the bytes, not a disk trip.
@@ -278,7 +283,7 @@ public static class SnapshotWriter
                     var final = crc;
                     var field = new byte[4];
                     SnapshotCrc32.WriteStored(field, final);
-                    stream.Position = SnapshotFormat.GetSectionsCrcFieldOffset(meta);
+                    stream.Position = crcFieldOffset;
                     stream.Write(field);
                 }
                 finally

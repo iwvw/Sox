@@ -75,7 +75,7 @@
 
 | 项 | 做法 |
 |---|---|
-| `PathGate.VerifyPath` 段错位 | 每个路径段最多消费一个 query 段，未命中只跳过路径段 |
+| `PathGate.VerifyPath` 段错位 | **经复核此条不成立**：原代码 `pIdx--` 本就无条件执行，每段最多消费一个 query 段，与 `Verify()` 一致。已撤回改动，仅保留注释 |
 | 快照同长损坏 | 新增 `SnapshotCrc32`（CRC32C），header 加 `SectionsCrc32` 字段，版本 10 → **11**；`Snapshot.Open(path, verifyChecksum)` 可选校验；缓存打开失败时才跑 CRC 以区分「结构错」与「字节坏」 |
 | `GetFullPath` 热路径 | `List`/`StringBuilder` 改为 `[ThreadStatic]` 复用 |
 | 路径模式取消传播 | `MatchUniquesForPath(..., token)` + `ParallelOptions.CancellationToken` |
@@ -83,8 +83,8 @@
 | STA 图标线程 COM | 线程入口 `OleInitialize` / `OleUninitialize` |
 | 图标队列无上限等待 | `Run` 加 10s 超时 |
 
-新增测试：`SnapshotCrc32Tests`（含标准向量 `0xE3069283`、增量一致性、位翻转检测、字段偏移）。
-测试总数 72 → **77**。
+新增测试：`SnapshotCrc32Tests`（含标准向量 `0xE3069283`、增量一致性、位翻转检测）。
+测试总数 72 → **77**。第五轮修复后为 80。
 
 **注意**：快照版本升到 11，旧的 `.idx` 会因版本不匹配被忽略并重建（**不会删除文件**，这是第一轮修的行为）。首次启动会全盘重扫一次。
 
@@ -99,6 +99,19 @@
 - 停服务会连带 `HookProcessBroker.KillAll()`，不留 hook 孤儿
 
 详见 `docs/adr/0023-exit-stops-service.md`。
+
+## 第四轮(0.4.2 回归修复 → 0.4.3)
+
+0.4.2 发布后本机安装验证时,服务日志报 `Stream does not support reading`,索引初始化失败。**这是第二轮 CRC 改动引入的回归,已随 0.4.2 发出**。
+
+两个叠加错误:
+
+1. `SnapshotWriter.Write` 的 FileStream 用 `FileAccess.Write` 打开,而 CRC 需要回读同一流 → 抛异常。改为 `FileAccess.ReadWrite` + 回读前 `Flush()`。
+2. CRC 字段偏移手算错误(9 个 int 数成 10 个),把校验值写到 RootId 上、读回为 0,校验形同虚设。改为由 `WriteHeader` 直接返回写入位置,不再重复布局算术。
+
+根因:只有布局算术单测,没有真正写过快照文件。补齐 `SnapshotRoundTripTests`(真实写入 → 带校验读回、5000 条多缓冲区、翻转字节必须被拒绝)。测试 77 → **80**。
+
+另注:第四轮表里 `PathGate.VerifyPath` 那条经复核不成立,已撤回。
 
 ## 相关文件
 
