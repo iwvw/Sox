@@ -218,10 +218,6 @@ internal static class SnapshotFormat
             using var reader = new BinaryReader(stream, NameEncoding);
             if (stream.Length < 12)
                 return null; // too short to even carry magic+version -- treat as corrupt
-            var magic = reader.ReadUInt64();
-            var version = reader.ReadInt32();
-            if (magic != Magic || version != Version)
-                return null; // stale or foreign: callers must not delete it, a newer build may still read it
             return ReadHeader(reader);
         }
         catch (IOException)

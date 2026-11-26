@@ -130,4 +130,43 @@ public class SnapshotRoundTripTests : IDisposable
 
         Assert.ThrowsAny<InvalidDataException>(() => Snapshot.Open(path, verifyChecksum: true));
     }
+
+    // Cache discovery scans every .idx through this path. It reads magic/version itself and then reads
+    // the body, so a copy that re-read magic before delegating to ReadHeader (which reads it again)
+    // rejected every VALID snapshot with "magic mismatch" while silently accepting invalid ones -- the
+    // exact inversion that made the drive-maintenance poller log three errors every cycle.
+    [Fact]
+    public void TryReadHeaderFromFile_ReadsAFreshlyWrittenSnapshot()
+    {
+        var path = Path.Combine(_dir, "snap.idx");
+        SnapshotWriter.Write(SampleStore(), path);
+
+        var meta = SnapshotFormat.TryReadHeaderFromFile(path);
+
+        Assert.NotNull(meta);
+        Assert.Equal(4, meta!.RowCount);
+        Assert.Equal("C", meta.SourceKey);
+    }
+
+    [Fact]
+    public void TryReadHeaderFromFile_ReturnsNullForForeignVersion()
+    {
+        var path = Path.Combine(_dir, "snap.idx");
+        SnapshotWriter.Write(SampleStore(), path);
+
+        var bytes = File.ReadAllBytes(path);
+        BitConverter.GetBytes(SnapshotFormat.Version + 1).CopyTo(bytes, 8);
+        File.WriteAllBytes(path, bytes);
+
+        Assert.Null(SnapshotFormat.TryReadHeaderFromFile(path));
+    }
+
+    [Fact]
+    public void TryReadHeaderFromFile_ReturnsNullForTooShortFile()
+    {
+        var path = Path.Combine(_dir, "tiny.idx");
+        File.WriteAllBytes(path, new byte[8]);
+
+        Assert.Null(SnapshotFormat.TryReadHeaderFromFile(path));
+    }
 }
