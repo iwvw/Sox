@@ -37,6 +37,12 @@ public sealed partial class InlineSearchWindow : WindowEx
     private CancellationTokenSource? _searchCts;
     private bool _suppressTextChanged;
     private bool _shown;
+    // The dialog the panel has already taken the keyboard for. The hook re-reports a dialog constantly
+    // (path polling) and re-shows the panel after every hide, so without this the panel re-ran Activate()
+    // on that same dialog every time -- stealing the foreground back from the file dialog on a loop. Its
+    // own controls (the file-type dropdown, 打开/取消) could then never be used: a popup closes the very
+    // instant it loses focus, and every click on the dialog was spent just re-activating it.
+    private IntPtr _focusedDialog;
     private EmptyListMode _emptyMode = EmptyListMode.OpenFolders;
     private readonly List<string> _openedFolders = [];
     private string? _suggestedFolder;
@@ -250,7 +256,14 @@ public sealed partial class InlineSearchWindow : WindowEx
         // Take focus so typing goes straight into the box (Listary behaviour). The hook's focus filter
         // ignores this process's own windows, so focusing the panel does not count as the dialog losing
         // focus and will not hide it.
-        FocusBox();
+        // Take the keyboard only the FIRST time this dialog summons the panel. A later re-show (the hook
+        // re-reporting the same dialog after the panel was hidden) must not steal focus again -- see
+        // _focusedDialog.
+        if (_focusedDialog != dialogHwnd)
+        {
+            _focusedDialog = dialogHwnd;
+            FocusBox();
+        }
     }
 
     private void OnOpenedFolders(IReadOnlyList<string> folders)
@@ -874,11 +887,28 @@ public sealed partial class InlineSearchWindow : WindowEx
             return;
         }
 
-        // The adapter writes the path into the dialog's file-name box and only commits it (Enter) while
-        // the dialog is the foreground window. Our panel is foreground here, so hand foreground back to
-        // the dialog first -- the App is the current foreground process, which is what grants it the right
-        // to do this (the Hook is not foreground and cannot).
+        // Read the query on the UI thread, before the hand-off below: the history write at the end runs on
+        // a pool thread, and touching SearchBox.Text from there throws (a XAML object marshalled to another
+        // thread), which was silently dropping every inline jump from the history.
+        var searchText = SearchBox.Text;
+
+        // Hand the keyboard back to the dialog before the hook navigates it. The hook is an ELEVATED
+        // process, so its own SetForegroundWindow is refused unless this (foreground) process grants it
+        // first -- without the grant the adapter writes the path into the dialog's name box but the
+        // committing Enter lands while the dialog is not the real foreground window, so the path just sits
+        // there and the user has to click the dialog (repeatedly) until it happens to activate. The grant
+        // plus RestoreDialogFocus (caret back into the dialog's own field) is the same two-step hand-off
+        // Lertaro's inline navigator uses. See InlineSearchWindow/Helpers/InlineSearchNavigator.
+        if (_hookIpc.ServiceProcessId != 0)
+        {
+            Interop.NativeMethods.AllowSetForegroundWindow(_hookIpc.ServiceProcessId);
+        }
         Interop.ForegroundHelper.ForceForeground(_dialogHwnd);
+        _hookIpc.SendMessage(new IpcMessage
+        {
+            Id = IpcMessageId.RestoreDialogFocus,
+            Hwnd = _dialogHwnd.ToInt64(),
+        });
 
         _hookIpc.SendMessage(new IpcMessage
         {
@@ -888,7 +918,7 @@ public sealed partial class InlineSearchWindow : WindowEx
         });
 
         Task.Run(() => Sox.Core.SearchHistoryStore.Record(
-            SearchBox.Text,
+            searchText,
             item.Path,
             item.IsDir ? Sox.PluginSdk.Services.HistoryEntryKind.Folder : Sox.PluginSdk.Services.HistoryEntryKind.File));
 
