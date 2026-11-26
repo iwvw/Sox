@@ -167,9 +167,11 @@ public sealed partial class IndexPage : Page
         if (PriorityList.SelectedItem is not PriorityRow row)
             return;
 
-        await EditPriorityAsync(row.Model, isNew: false);
-        row.Refresh();
-        SavePriorities();
+        if (await EditPriorityAsync(row.Model, isNew: false))
+        {
+            row.Refresh();
+            SavePriorities();
+        }
     }
 
     private void OnDeletePriority(object sender, RoutedEventArgs e)
@@ -184,23 +186,74 @@ public sealed partial class IndexPage : Page
 
     private async Task<bool> EditPriorityAsync(PathPriorityRuleSetting rule, bool isNew)
     {
-        var path = new TextBox { Text = rule.Path };
+        var draftPath = rule.Path;
+        var draftIndex = rule.Priority switch
+        {
+            PathPriority.High => 0,
+            PathPriority.Uncommon => 2,
+            PathPriority.Excluded => 3,
+            _ => 1,
+        };
+
+        while (true)
+        {
+            var (result, pickedPath, selectedIndex) = await ShowPriorityDialogAsync(isNew, draftPath, draftIndex);
+
+            // Browse requested: the picker cannot be a child of the open ContentDialog. A picker owned by
+            // the window while the dialog is up is another modal in the same window, so the dialog keeps
+            // capturing input and the picker's OK never lands. Close the dialog first, then pick, then
+            // reopen with the current draft so the user sees the same form.
+            if (result == PriorityDialogResult.Browse)
+            {
+                draftIndex = selectedIndex;
+                var folder = await PickFolderAsync();
+                if (folder is not null)
+                    draftPath = folder;
+                continue;
+            }
+
+            if (result != PriorityDialogResult.Primary)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(pickedPath))
+                return false;
+
+            draftPath = pickedPath;
+            draftIndex = selectedIndex;
+            break;
+        }
+
+        rule.Path = draftPath.Trim();
+        rule.Priority = draftIndex switch
+        {
+            0 => PathPriority.High,
+            2 => PathPriority.Uncommon,
+            3 => PathPriority.Excluded,
+            _ => PathPriority.Normal,
+        };
+        return true;
+    }
+
+    private enum PriorityDialogResult
+    {
+        Primary,
+        Cancel,
+        Browse,
+    }
+
+    private async Task<(PriorityDialogResult Result, string Path, int Index)> ShowPriorityDialogAsync(
+        bool isNew,
+        string initialPath,
+        int initialIndex)
+    {
+        var outcome = PriorityDialogResult.Cancel;
+
+        var path = new TextBox { Text = initialPath };
         var pick = new Button
         {
             Content = "浏览…",
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Bottom,
-        };
-        pick.Click += async (_, _) =>
-        {
-            var picker = new Windows.Storage.Pickers.FolderPicker();
-            // Parent the picker to the settings window, not the hidden spotlight: owning it to the
-            // spotlight left the dialog behind that topmost window, only surfacing when it was summoned.
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow));
-            picker.FileTypeFilter.Add("*");
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder is not null)
-                path.Text = folder.Path;
         };
 
         // Label above, then a two-column row (textbox stretches, button auto-width on the right). A
@@ -223,13 +276,7 @@ public sealed partial class IndexPage : Page
         combo.Items.Add("正常");
         combo.Items.Add("不常用（靠后）");
         combo.Items.Add("不索引（排除）");
-        combo.SelectedIndex = rule.Priority switch
-        {
-            PathPriority.High => 0,
-            PathPriority.Uncommon => 2,
-            PathPriority.Excluded => 3,
-            _ => 1,
-        };
+        combo.SelectedIndex = initialIndex is >= 0 and <= 3 ? initialIndex : 1;
 
         var panel = new StackPanel { Spacing = 12, Width = 460 };
         panel.Children.Add(pathField);
@@ -245,21 +292,28 @@ public sealed partial class IndexPage : Page
             XamlRoot = XamlRoot,
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            return false;
-
-        if (string.IsNullOrWhiteSpace(path.Text))
-            return false;
-
-        rule.Path = path.Text.Trim();
-        rule.Priority = combo.SelectedIndex switch
+        pick.Click += (_, _) =>
         {
-            0 => PathPriority.High,
-            2 => PathPriority.Uncommon,
-            3 => PathPriority.Excluded,
-            _ => PathPriority.Normal,
+            outcome = PriorityDialogResult.Browse;
+            dialog.Hide();
         };
-        return true;
+
+        var shown = await dialog.ShowAsync();
+        if (outcome != PriorityDialogResult.Browse && shown != ContentDialogResult.Primary)
+            return (PriorityDialogResult.Cancel, initialPath, initialIndex);
+
+        return (outcome == PriorityDialogResult.Browse ? outcome : PriorityDialogResult.Primary, path.Text, combo.SelectedIndex);
+    }
+
+    private async Task<string?> PickFolderAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FolderPicker();
+        // Parent the picker to the settings window, not the hidden spotlight: owning it to the
+        // spotlight left the dialog behind that topmost window, only surfacing when it was summoned.
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow));
+        picker.FileTypeFilter.Add("*");
+        var folder = await picker.PickSingleFolderAsync();
+        return string.IsNullOrEmpty(folder?.Path) ? null : folder.Path;
     }
 
     private void SavePriorities()
